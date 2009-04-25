@@ -1,0 +1,26 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>net.alchim31.maven.it</groupId>
+  <artifactId>test-1</artifactId>
+  <version>testing</version>
+
+  <description>Test the myproject-maven-plugin:do-something goal.</description>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>net.alchim31.maven</groupId>
+        <artifactId>maven-basicwebstart-plugin</artifactId>
+        <version>testing</version>
+
+        <executions>
+          <execution>
+            <goals>
+              <goal>jwsdir</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
