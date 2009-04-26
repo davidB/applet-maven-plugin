@@ -118,7 +118,7 @@ public class JarUtil {
     }
 
 
-    public static File pack(File jar, final Log log) throws Exception {
+    public static File pack(File jar, String[] options, final Log log) throws Exception {
         Packer packer = Pack200.newPacker();
 
 //    // Initialize the state by setting the desired properties
@@ -170,8 +170,10 @@ public class JarUtil {
             log.error(msg);
             throw new IllegalStateException(msg);
         }
+        if (options != null && options.length > 0) {
+            commandLine.addArguments(options);
+        }
         commandLine.addArguments(new String[]{back.getAbsolutePath(), jar.getAbsolutePath()});
-        System.out.println(">>>> " + commandLine);
         log.debug(commandLine.toString());
         int pid = CommandLineUtils.executeCommandLine(commandLine, stdout, sterr);
         while(CommandLineUtils.isAlive(pid)) {

@@ -69,6 +69,16 @@ public class JwsDirMojo extends AbstractMojo {
     private boolean packEnabled;
 
     /**
+     * Optionnal additionnal options to use when calling pack200 (eg:
+     * --modification-time=latest --deflate-hint="true" --strip-debug).
+     *
+     * @see http://java.sun.com/j2se/1.5.0/docs/guide/deployment/deployment-guide/pack200.html#pack200_compression
+     * @see http://java.sun.com/javase/6/docs/technotes/guides/jweb/tools/pack200.html#pack200
+     * @parameter expression="${jnlp.packOptions}"
+     */
+    private String[] packOptions;
+
+    /**
      * Should generate a jar with version number that follow java-plugin convention ?
      * The value could be used in template call via "${versionEnabled}", use it
      * to avoid to keep sync your pom.xml and you .jnlp.vm
@@ -295,7 +305,7 @@ public class JwsDirMojo extends AbstractMojo {
             //signer.verify(out);
             if (packEnabled) {
                 getLog().debug("pack :" + out);
-                JarUtil.pack(out, getLog());
+                JarUtil.pack(out, packOptions, getLog());
             }
             getLog().info("process " + out);
         }

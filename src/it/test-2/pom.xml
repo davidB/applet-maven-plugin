@@ -71,6 +71,11 @@
           <packEnabled>true</packEnabled>
           <versionEnabled>false</versionEnabled>
           <verbose>false</verbose>
+          <packOptions>
+            <option>--modification-time=latest</option>
+            <option>--deflate-hint="true"</option>
+            <option>--strip-debug</option>
+          </packOptions>
           <templateValues>
             <property>
               <name>mainClass</name>
