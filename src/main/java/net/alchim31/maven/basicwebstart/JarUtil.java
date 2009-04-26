@@ -21,7 +21,11 @@ import org.codehaus.plexus.archiver.manager.ArchiverManager;
 import java.util.jar.Pack200;
 import java.util.jar.Pack200.Packer;
 import java.util.zip.GZIPOutputStream;
+import org.apache.maven.plugin.logging.Log;
 import org.codehaus.plexus.util.IOUtil;
+import org.codehaus.plexus.util.cli.CommandLineUtils;
+import org.codehaus.plexus.util.cli.Commandline;
+import org.codehaus.plexus.util.cli.StreamConsumer;
 
 /**
  *
@@ -114,7 +118,7 @@ public class JarUtil {
     }
 
 
-    public static File pack(File jar) throws Exception {
+    public static File pack(File jar, final Log log) throws Exception {
         Packer packer = Pack200.newPacker();
 
 //    // Initialize the state by setting the desired properties
@@ -137,16 +141,69 @@ public class JarUtil {
 //    // pass one class file uncompressed:
 //    p.put(Packer.PASS_FILE_PFX+0, "mutants/Rogue.class");
         File back = new File(jar.getAbsolutePath() + ".pack.gz");
-        JarFile in = null;
-        OutputStream out = null;
-        try {
-            in = new JarFile(jar);
-            out = new GZIPOutputStream(new FileOutputStream(back));
-            packer.pack(in, out);
-            return back;
-        } finally {
-            //IOUtil.close(in);
-            IOUtil.close(out);
+//        JarFile in = null;
+//        OutputStream out = null;
+//        try {
+//            in = new JarFile(jar);
+//            out = new GZIPOutputStream(new FileOutputStream(back));
+//            packer.pack(in, out);
+//            return back;
+//        } finally {
+//            //IOUtil.close(in);
+//            IOUtil.close(out);
+//        }
+        StreamConsumer stdout = new StreamConsumer() {
+            public void consumeLine( String line ) {
+                log.info( line );
+            }
+        };
+        StreamConsumer sterr = new StreamConsumer() {
+            public void consumeLine( String line ) {
+                log.info( line );
+            }
+        };
+        Commandline commandLine = new Commandline();
+        commandLine.setExecutable(new File(System.getProperty("java.home"), "bin/pack200").getCanonicalPath() );
+        File exec = new File(commandLine.getExecutable());
+        if (!exec.exists()) {
+            String msg = "exec not found : " + exec;
+            log.error(msg);
+            throw new IllegalStateException(msg);
+        }
+        commandLine.addArguments(new String[]{back.getAbsolutePath(), jar.getAbsolutePath()});
+        System.out.println(">>>> " + commandLine);
+        log.debug(commandLine.toString());
+        int pid = CommandLineUtils.executeCommandLine(commandLine, stdout, sterr);
+        while(CommandLineUtils.isAlive(pid)) {
+            Thread.sleep(1000);
+        }
+        return back;
+    }
+
+    public static void repack(File jar, final Log log) throws Exception {
+        StreamConsumer stdout = new StreamConsumer() {
+            public void consumeLine( String line ) {
+                log.info( line );
+            }
+        };
+        StreamConsumer sterr = new StreamConsumer() {
+            public void consumeLine( String line ) {
+                log.info( line );
+            }
+        };
+        Commandline commandLine = new Commandline();
+        commandLine.setExecutable(new File(System.getProperty("java.home"), "bin/pack200").getCanonicalPath() );
+        File exec = new File(commandLine.getExecutable());
+        if (!exec.exists()) {
+            String msg = "exec not found : " + exec;
+            log.error(msg);
+            throw new IllegalStateException(msg);
+        }
+        commandLine.addArguments(new String[]{"--repack", jar.getAbsolutePath()});
+        log.debug(commandLine.toString());
+        int pid = CommandLineUtils.executeCommandLine(commandLine, stdout, sterr);
+        while(CommandLineUtils.isAlive(pid)) {
+            Thread.sleep(1000);
         }
     }
 

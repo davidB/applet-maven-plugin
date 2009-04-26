@@ -245,6 +245,37 @@ public class JwsDirMojo extends AbstractMojo {
         _jars = new LinkedList<Artifact>();
     }
 
+    // see http://java.sun.com/j2se/1.5.0/docs/guide/deployment/deployment-guide/pack200.html
+    //    Step 1:  Repack the file to normalize the jar, repacking calls the packer and unpacks the file in one step.
+    //
+    //    % pack200 --repack HelloWorld.jar
+    //
+    //    Step 2: Sign the jar after we normalize using repack.
+    //
+    //    % jarsigner -keystore myKeystore HelloWorld.jar ksrini
+    //
+    //    Verify the just signed jar to ensure the signing worked.
+    //
+    //    % jarsigner -verify HelloWorld.jar
+    //    jar verified.
+    //
+    //    Ensure the jar still works.
+    //
+    //    % Java -jar HelloWorld.jar
+    //    HelloWorld
+    //
+    //    Step 3: Now we pack the file
+    //
+    //    % pack200 HelloWorld.jar.pack.gz HelloWorld.jar
+    //
+    //    Step 4: Unpack the file
+    //
+    //    % unpack200 HelloWorld.jar.pack.gz HelloT1.jar
+    //
+    //    Step 5:  Verify the jar
+    //
+    //    % jarsigner -verify HelloT1.jar
+    //    jar verified.
     private void processJars(File outputDir) throws Exception {
         JarSigner signer = new JarSigner(sign, JarUtil.createTempDir(), getLog(), verbose);
         for(Artifact artifact : _jars) {
@@ -254,9 +285,17 @@ public class JwsDirMojo extends AbstractMojo {
             File in = artifact.getFile();
             File out = new File(outputDir, findFilename(artifact, true));
             getLog().debug("sign  : " + in + " to " + out);
-            signer.sign(in, out);
             if (packEnabled) {
-                JarUtil.pack(out);
+                getLog().debug("repack :" + in + " to " + out);
+                FileUtils.copyFile(in, out);
+                JarUtil.repack(out, getLog());
+                in = out;
+            }
+            signer.sign(in, out);
+            //signer.verify(out);
+            if (packEnabled) {
+                getLog().debug("pack :" + out);
+                JarUtil.pack(out, getLog());
             }
             getLog().info("process " + out);
         }

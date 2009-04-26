@@ -9,3 +9,4 @@ build.log
 .classpath
 .manager
 .externalTool*
+bin

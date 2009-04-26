@@ -105,7 +105,9 @@ public class JarSigner {
     public void sign(File jarIn, File jarOut) throws Exception {
         if (_mojo != null) {
             _mojo.setJarPath(jarIn);
-            _mojo.setSignedJar(jarOut);
+            if (!jarIn.getCanonicalPath().equals(jarOut.getCanonicalPath())) {
+                _mojo.setSignedJar(jarOut);
+            }
             _mojo.execute();
         } else {
             FileUtils.copyFile(jarIn, jarOut);

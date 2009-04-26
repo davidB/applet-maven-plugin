@@ -69,7 +69,8 @@
              <dnameC>fillme</dnameC>
            </sign>
           <packEnabled>true</packEnabled>
-          <verbose>true</verbose>
+          <versionEnabled>false</versionEnabled>
+          <verbose>false</verbose>
           <templateValues>
             <property>
               <name>mainClass</name>
