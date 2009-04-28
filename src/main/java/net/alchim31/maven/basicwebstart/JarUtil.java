@@ -7,22 +7,15 @@ package net.alchim31.maven.basicwebstart;
 
 import java.io.File;
 import java.io.FileFilter;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.List;
 
-import java.util.jar.JarFile;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.archiver.UnArchiver;
 import org.codehaus.plexus.archiver.jar.JarArchiver;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
-import java.util.jar.Pack200;
-import java.util.jar.Pack200.Packer;
-import java.util.zip.GZIPOutputStream;
 import org.apache.maven.plugin.logging.Log;
-import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.cli.CommandLineUtils;
 import org.codehaus.plexus.util.cli.Commandline;
 import org.codehaus.plexus.util.cli.StreamConsumer;
@@ -86,6 +79,12 @@ public class JarUtil {
         return tempDir;
     }
     
+    public static void unsign(File jarIn, File jarOut, ArchiverManager archiverManager, boolean compress) throws Exception {
+        File explodedJarDir = unjar(jarIn, archiverManager);
+        unsign(explodedJarDir);
+        jar(explodedJarDir, jarOut, archiverManager, compress);
+    }
+    
     public static void unsign(File explodedJarDir) throws Exception {
         // create and check META-INF directory
         File metaInf = new File( explodedJarDir, "META-INF" );
@@ -119,7 +118,7 @@ public class JarUtil {
 
 
     public static File pack(File jar, String[] options, final Log log) throws Exception {
-        Packer packer = Pack200.newPacker();
+//        Packer packer = Pack200.newPacker();
 
 //    // Initialize the state by setting the desired properties
 //    Map p = packer.properties();
@@ -152,37 +151,57 @@ public class JarUtil {
 //            //IOUtil.close(in);
 //            IOUtil.close(out);
 //        }
-        StreamConsumer stdout = new StreamConsumer() {
-            public void consumeLine( String line ) {
-                log.info( line );
-            }
-        };
-        StreamConsumer sterr = new StreamConsumer() {
-            public void consumeLine( String line ) {
-                log.info( line );
-            }
-        };
         Commandline commandLine = new Commandline();
-        commandLine.setExecutable(new File(System.getProperty("java.home"), "bin/pack200").getCanonicalPath() );
-        File exec = new File(commandLine.getExecutable());
-        if (!exec.exists()) {
-            String msg = "exec not found : " + exec;
-            log.error(msg);
-            throw new IllegalStateException(msg);
-        }
+        commandLine.setExecutable(findJavaExec("pack200"));
         if (options != null && options.length > 0) {
             commandLine.addArguments(options);
         }
         commandLine.addArguments(new String[]{back.getAbsolutePath(), jar.getAbsolutePath()});
-        log.debug(commandLine.toString());
-        int pid = CommandLineUtils.executeCommandLine(commandLine, stdout, sterr);
-        while(CommandLineUtils.isAlive(pid)) {
-            Thread.sleep(1000);
-        }
+        exec(commandLine, log);
         return back;
     }
 
-    public static void repack(File jar, final Log log) throws Exception {
+    public static void repack(File jar, String[] options, final Log log) throws Exception {
+        Commandline commandLine = new Commandline();
+        commandLine.setExecutable(findJavaExec("pack200"));
+        commandLine.addArguments(options);
+        commandLine.addArguments(new String[]{"--repack", jar.getAbsolutePath()});
+        exec(commandLine, log);
+    }
+
+    public static void unpack(File pack, File jar, Log log) throws Exception {
+        Commandline commandLine = new Commandline();
+        commandLine.setExecutable(findJavaExec("unpack200"));
+        commandLine.addArguments(new String[]{pack.getAbsolutePath(), jar.getAbsolutePath()});
+        exec(commandLine, log);
+    }
+
+    //TODO throws an exception or return a boolean is the verification failed
+    public static void verifySignature(File jar, Log log) throws Exception {
+        Commandline commandLine = new Commandline();
+        commandLine.setExecutable( findJavaExec("jarsigner") );
+        commandLine.addArguments(new String[]{"--verify", jar.getAbsolutePath()});
+        exec(commandLine, log);
+    }
+    
+    private static String findJavaExec(String name) throws Exception {
+        File jhome = new File(System.getProperty("java.home"));
+        File f = findJavaExec(jhome, name);
+        if (!f.exists() && jhome.getName().contains("jre")) {
+            f = new File(jhome.getParentFile(), "bin/" + name);
+        }
+        return f.getCanonicalPath();
+    }
+    
+    private static File findJavaExec(File jhome, String name) throws Exception {
+        File f = new File(jhome, "bin/" + name);
+        if (!f.exists()) {
+            f = new File(jhome, "bin/" + name + ".exe");
+        }
+        return f;
+    }
+
+    private static void exec(Commandline commandLine, final Log log) throws Exception {
         StreamConsumer stdout = new StreamConsumer() {
             public void consumeLine( String line ) {
                 log.info( line );
@@ -193,20 +212,16 @@ public class JarUtil {
                 log.info( line );
             }
         };
-        Commandline commandLine = new Commandline();
-        commandLine.setExecutable(new File(System.getProperty("java.home"), "bin/pack200").getCanonicalPath() );
         File exec = new File(commandLine.getExecutable());
         if (!exec.exists()) {
             String msg = "exec not found : " + exec;
             log.error(msg);
             throw new IllegalStateException(msg);
         }
-        commandLine.addArguments(new String[]{"--repack", jar.getAbsolutePath()});
         log.debug(commandLine.toString());
         int pid = CommandLineUtils.executeCommandLine(commandLine, stdout, sterr);
         while(CommandLineUtils.isAlive(pid)) {
             Thread.sleep(1000);
         }
     }
-
 }

@@ -256,6 +256,7 @@ public class JwsDirMojo extends AbstractMojo {
     }
 
     // see http://java.sun.com/j2se/1.5.0/docs/guide/deployment/deployment-guide/pack200.html
+    // see http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5078608
     //    Step 1:  Repack the file to normalize the jar, repacking calls the packer and unpacks the file in one step.
     //
     //    % pack200 --repack HelloWorld.jar
@@ -296,9 +297,11 @@ public class JwsDirMojo extends AbstractMojo {
             File out = new File(outputDir, findFilename(artifact, true));
             getLog().debug("sign  : " + in + " to " + out);
             if (packEnabled) {
-                getLog().debug("repack :" + in + " to " + out);
+                getLog().debug("unsign :" + in + " to " + out);
+                //JarUtil.unsign(in, out, archiverManager, false);
                 FileUtils.copyFile(in, out);
-                JarUtil.repack(out, getLog());
+                getLog().debug("repack :" + in + " to " + out);
+                JarUtil.repack(out, packOptions, getLog());
                 in = out;
             }
             signer.sign(in, out);
@@ -306,6 +309,12 @@ public class JwsDirMojo extends AbstractMojo {
             if (packEnabled) {
                 getLog().debug("pack :" + out);
                 JarUtil.pack(out, packOptions, getLog());
+
+                getLog().debug("verify packed");
+                File tmp = new File(out.getAbsolutePath() + "-tmp.jar"); 
+                JarUtil.unpack(out, tmp, getLog());
+                JarUtil.verifySignature(tmp, getLog());
+                tmp.delete();
             }
             getLog().info("process " + out);
         }
