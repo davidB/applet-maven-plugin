@@ -180,7 +180,7 @@ public class JarUtil {
     public static void verifySignature(File jar, Log log) throws Exception {
         Commandline commandLine = new Commandline();
         commandLine.setExecutable( findJavaExec("jarsigner") );
-        commandLine.addArguments(new String[]{"--verify", jar.getAbsolutePath()});
+        commandLine.addArguments(new String[]{"-verify", jar.getAbsolutePath()});
         exec(commandLine, log);
     }
     

@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.FileReader;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
@@ -230,7 +231,7 @@ public class JwsDirMojo extends AbstractMojo {
         }
     }
 
-    private static LinkedList<Artifact> _jars = null;
+    private static HashSet<Artifact> _jars = null;
 //    public static String addJar(String jar) throws Exception {
 //        _jars.add(jar);
 //        String back = "href=\"" + jar + "\"";
@@ -252,7 +253,7 @@ public class JwsDirMojo extends AbstractMojo {
     }
 
     private void initJars() throws Exception {
-        _jars = new LinkedList<Artifact>();
+        _jars = new HashSet<Artifact>();
     }
 
     // see http://java.sun.com/j2se/1.5.0/docs/guide/deployment/deployment-guide/pack200.html
