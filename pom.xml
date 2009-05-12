@@ -31,6 +31,17 @@
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-archiver</artifactId>
       <version>1.0-alpha-11</version>
+      <!-- see http://markmail.org/message/ouwijgfbimnf22sk?q=component%2Eorg%2Ecodehaus%2Eplexus%2Earchiver%2Emanager%2EArchiverManager&page=1&refer=2p3xidzgwsx4y5ir -->
+      <exclusions>
+        <exclusion>
+          <groupId>org.codehaus.plexus</groupId>
+          <artifactId>plexus-container-default</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.codehaus.plexus</groupId>
+          <artifactId>plexus-component-api</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.maven.plugins</groupId>

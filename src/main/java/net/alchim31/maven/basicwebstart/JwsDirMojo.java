@@ -20,6 +20,7 @@ import org.apache.maven.project.MavenProject;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.Velocity;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
+import org.codehaus.plexus.archiver.manager.DefaultArchiverManager;
 import org.codehaus.plexus.util.FileUtils;
 
 /**
@@ -290,35 +291,44 @@ public class JwsDirMojo extends AbstractMojo {
     //    jar verified.
     private void processJars(File outputDir) throws Exception {
         JarSigner signer = new JarSigner(sign, JarUtil.createTempDir(), getLog(), verbose);
+        File tmp1 = new File(outputDir, "tmp-1.jar");
+        File tmp2 = new File(outputDir, "tmp-2.jar");
+        File tmp3 = new File(outputDir, "tmp-3.jar");
         for(Artifact artifact : _jars) {
             if (artifact == null) {
                 continue;
             }
             File in = artifact.getFile();
-            File out = new File(outputDir, findFilename(artifact, true));
-            getLog().debug("sign  : " + in + " to " + out);
+            File dest = new File(outputDir, findFilename(artifact, true));
+
+            getLog().debug("unsign :" + in + " to " + tmp1);
+            JarUtil.unsign(in, tmp1, archiverManager, false);
+            in = tmp1;
+            
             if (packEnabled) {
-                getLog().debug("unsign :" + in + " to " + out);
-                //JarUtil.unsign(in, out, archiverManager, false);
-                FileUtils.copyFile(in, out);
-                getLog().debug("repack :" + in + " to " + out);
-                JarUtil.repack(out, packOptions, getLog());
-                in = out;
+                getLog().debug("repack :" + in + " to " + tmp2);
+                JarUtil.repack(tmp2, packOptions, getLog());
+                in = tmp2;
             }
-            signer.sign(in, out);
+            
+            getLog().debug("sign  : " + in + " to " + dest);
+            signer.sign(in, dest);
+            
             //signer.verify(out);
+            
             if (packEnabled) {
-                getLog().debug("pack :" + out);
-                JarUtil.pack(out, packOptions, getLog());
+                getLog().debug("pack :" + dest);
+                JarUtil.pack(dest, packOptions, getLog());
 
                 getLog().debug("verify packed");
-                File tmp = new File(out.getAbsolutePath() + "-tmp.jar"); 
-                JarUtil.unpack(out, tmp, getLog());
-                JarUtil.verifySignature(tmp, getLog());
-                tmp.delete();
+                JarUtil.unpack(dest, tmp3, getLog());
+                JarUtil.verifySignature(tmp3, getLog());
             }
-            getLog().info("process " + out);
+            getLog().info("end generation of " + dest);
         }
+        tmp1.delete();
+        tmp2.delete();
+        tmp3.delete();
     }
 
     private static boolean isSnapshot(Artifact artifact) {
