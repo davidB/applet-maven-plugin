@@ -109,10 +109,15 @@ public class JarUtil {
 
     public static void jar(File explodedJarDir, File jarFile, ArchiverManager archiverManager, boolean compress) throws Exception {
         JarArchiver jarArchiver = (JarArchiver) archiverManager.getArchiver( "jar" );
-        jarArchiver.setCompress( true );
+        jarArchiver.setCompress( compress );
         jarArchiver.setUpdateMode( false );
         jarArchiver.addDirectory( explodedJarDir );
         jarArchiver.setDestFile( jarFile );
+        File manifestFile = new File(explodedJarDir, "META-INF/MANIFEST.MF");
+        if (manifestFile.exists()) {
+            jarArchiver.setManifest(manifestFile);
+        }
+        jarArchiver.setIndex(true);
         jarArchiver.createArchive();
     }
 
