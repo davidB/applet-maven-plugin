@@ -109,7 +109,7 @@ public class JarSigner {
                 _mojo.setSignedJar(jarOut);
             }
             _mojo.execute();
-        } else {
+        } else if (!jarIn.getCanonicalPath().equals(jarOut.getCanonicalPath())) {
             FileUtils.copyFile(jarIn, jarOut);
         }
     }

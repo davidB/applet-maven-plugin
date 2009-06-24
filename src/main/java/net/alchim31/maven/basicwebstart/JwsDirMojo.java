@@ -291,44 +291,39 @@ public class JwsDirMojo extends AbstractMojo {
     //    jar verified.
     private void processJars(File outputDir) throws Exception {
         JarSigner signer = new JarSigner(sign, JarUtil.createTempDir(), getLog(), verbose);
-        File tmp1 = new File(outputDir, "tmp-1.jar");
-        File tmp2 = new File(outputDir, "tmp-2.jar");
-        File tmp3 = new File(outputDir, "tmp-3.jar");
         for(Artifact artifact : _jars) {
             if (artifact == null) {
                 continue;
             }
             File in = artifact.getFile();
             File dest = new File(outputDir, findFilename(artifact, true));
-
-            getLog().debug("unsign :" + in + " to " + tmp1);
-            JarUtil.unsign(in, tmp1, archiverManager, false);
-            in = tmp1;
+            getLog().debug("unsign :" + in + " to " + dest);
+            JarUtil.unsign(in, dest, archiverManager, false);
             
             if (packEnabled) {
-                getLog().debug("repack :" + in + " to " + tmp2);
-                JarUtil.repack(tmp2, packOptions, getLog());
-                in = tmp2;
+                getLog().debug("repack : " + dest);
+                JarUtil.repack(dest, packOptions, getLog());
             }
             
-            getLog().debug("sign  : " + in + " to " + dest);
-            signer.sign(in, dest);
+            getLog().debug("sign  : " + dest);
+            signer.sign(dest, dest);
             
             //signer.verify(out);
-            
             if (packEnabled) {
                 getLog().debug("pack :" + dest);
-                JarUtil.pack(dest, packOptions, getLog());
+                File tmp3 = new File(outputDir, "tmp3.jar");
+                try {
+                    JarUtil.pack(dest, packOptions, getLog());
 
-                getLog().debug("verify packed");
-                JarUtil.unpack(dest, tmp3, getLog());
-                JarUtil.verifySignature(tmp3, getLog());
+                    getLog().debug("verify packed");
+                    JarUtil.unpack(dest, tmp3, getLog());
+                    JarUtil.verifySignature(tmp3, getLog());
+                } finally {
+                    tmp3.delete();
+                }
             }
             getLog().info("end generation of " + dest);
         }
-        tmp1.delete();
-        tmp2.delete();
-        tmp3.delete();
     }
 
     private static boolean isSnapshot(Artifact artifact) {
