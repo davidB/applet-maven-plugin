@@ -38,13 +38,15 @@ public class JarUtil {
     // TODO check that tempDir is removed on shutdown
     public static File createTempDir() throws Exception {
         if (_tmpRootDir == null) {
-            _tmpRootDir = new File(System.getProperty("java.io.tmp"), "jarutil.tmp");
+            _tmpRootDir = new File(System.getProperty("java.io.tmpdir"), "jarutil.tmp");
             Runtime.getRuntime().addShutdownHook(new Thread(){
                 @Override
                 public void run() {
                     super.run();
                     try {
-                        FileUtils.deleteDirectory(_tmpRootDir);
+                        if (_tmpRootDir.exists()) {
+                            FileUtils.deleteDirectory(_tmpRootDir);
+                        }
                     } catch (IOException e) {
                         e.printStackTrace();
                     }

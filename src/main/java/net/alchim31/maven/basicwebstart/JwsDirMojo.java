@@ -298,7 +298,7 @@ public class JwsDirMojo extends AbstractMojo {
             File in = artifact.getFile();
             File dest = new File(outputDir, findFilename(artifact, true));
             getLog().debug("unsign :" + in + " to " + dest);
-            JarUtil.unsign(in, dest, archiverManager, false);
+            JarUtil.unsign(in, dest, archiverManager, true);
             
             if (packEnabled) {
                 getLog().debug("repack : " + dest);
