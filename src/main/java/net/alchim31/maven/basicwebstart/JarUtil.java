@@ -119,6 +119,11 @@ public class JarUtil {
         if (manifestFile.exists()) {
             jarArchiver.setManifest(manifestFile);
         }
+        //jnlp (1.6.0_u14) doesn't like empty jar (with nothing except META-INF)
+        File[] children = explodedJarDir.listFiles();
+        if ( children.length == 0 || (children.length == 1 && "META-INF".equals(children[0].getName().toUpperCase())) ) {
+            FileUtils.fileWrite(new File(explodedJarDir, "__no_empty.txt").getAbsolutePath(), "fake : no empty file for jnlp");
+        }
         jarArchiver.setIndex(true);
         jarArchiver.createArchive();
     }
