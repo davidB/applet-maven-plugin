@@ -1,27 +1,41 @@
 package net.alchim31.maven.basicwebstart;
 
-import org.apache.maven.plugin.AbstractMojo;
-import org.apache.maven.plugin.MojoExecutionException;
-
 import java.io.File;
-import java.io.FileWriter;
 import java.io.FileReader;
+import java.io.FileWriter;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.LinkedList;
-import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;
+import org.apache.maven.artifact.metadata.ArtifactMetadataSource;
 import org.apache.maven.artifact.repository.ArtifactRepository;
+import org.apache.maven.artifact.resolver.ArtifactCollector;
+import org.apache.maven.artifact.resolver.ArtifactResolutionResult;
 import org.apache.maven.artifact.resolver.ArtifactResolver;
-import org.apache.maven.model.Dependency;
+import org.apache.maven.artifact.resolver.filter.AndArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.ScopeArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.TypeArtifactFilter;
+import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.shared.dependency.tree.DependencyNode;
+import org.apache.maven.shared.dependency.tree.DependencyTreeBuilder;
+import org.apache.maven.shared.dependency.tree.DependencyTreeResolutionListener;
+import org.apache.maven.shared.dependency.tree.traversal.CollectingDependencyNodeVisitor;
+import org.apache.maven.shared.dependency.tree.traversal.DependencyNodeVisitor;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.Velocity;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
-import org.codehaus.plexus.archiver.manager.DefaultArchiverManager;
 import org.codehaus.plexus.util.FileUtils;
+
+import org.codehaus.plexus.logging.Logger;
 
 /**
  * generate jnlp (from template), rename, sign, pack jar
@@ -30,7 +44,7 @@ import org.codehaus.plexus.util.FileUtils;
  * @phase package
  * @author david.bernard
  */
-public class JwsDirMojo extends AbstractMojo {
+public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logging.LogEnabled{
 
     /**
      * Location of the file.
@@ -105,13 +119,21 @@ public class JwsDirMojo extends AbstractMojo {
     private MavenProject project;
 
     /**
+     * @component
+     * @required
+     * @readonly
+     */
+    protected ArtifactMetadataSource artifactMetadataSource;
+
+
+    /**
      * Used to look up Artifacts in the remote repository.
      *
      * @parameter expression="${component.org.apache.maven.artifact.factory.ArtifactFactory}"
      * @required
      * @readonly
      */
-    protected ArtifactFactory factory;
+    protected ArtifactFactory artifactFactory;
 
     /**
      * Used to look up Artifacts in the remote repository.
@@ -130,7 +152,8 @@ public class JwsDirMojo extends AbstractMojo {
      * @required
      */
     protected ArtifactRepository localRepo;
-
+    private LinkedList<?> remoteRepos = new LinkedList<Object>();
+    
     /**
      * To look up Archiver/UnArchiver implementations
      *
@@ -139,6 +162,24 @@ public class JwsDirMojo extends AbstractMojo {
      */
     protected ArchiverManager archiverManager;
 
+    /**
+     * The artifact collector to use.
+     * 
+     * @component
+     * @required
+     * @readonly
+     */
+    private ArtifactCollector artifactCollector;
+
+    /**
+     * The dependency tree builder to use.
+     * 
+     * @component
+     * @required
+     * @readonly
+     */
+    private DependencyTreeBuilder dependencyTreeBuilder;
+    
     public void execute() throws MojoExecutionException {
         try {
             getLog().info("start on : " + inputDirectory);
@@ -152,10 +193,10 @@ public class JwsDirMojo extends AbstractMojo {
 
             initJars(); //reset jarList before template fill it
 
-            getLog().info("processTemplates");
             VelocityContext context = initTemplateContext();
             for(File file : inputDirectory.listFiles()) {
-                if (file.getName().endsWith(".vm")) {
+                if (file.getName().endsWith(".vm") && file.canRead() && !file.getName().startsWith(".#") && !file.getName().startsWith("#")) {
+                    getLog().info("process template : " + file.getName());
                     // convert template to regular file in the outputdiretory and remove the '.vm' extension
                     generateTemplate(context, file, new File(outputDirectory, file.getName().substring(0, file.getName().length() - 3)));
                 } else {
@@ -177,28 +218,171 @@ public class JwsDirMojo extends AbstractMojo {
         context = addProperties(context, System.getProperties());
         context = addProperties(context, templateValues);
         context.put("jws", this);
-        context.put("dependencies", findAllDependencies());
         context.put("project", project);
         context.put("packEnabled", packEnabled);
         context.put("versionEnabled", versionEnabled);
         return context;
     }
 
-    @SuppressWarnings("unchecked")
-    private List<Artifact> findAllDependencies() throws Exception {
-        LinkedList<Artifact> back = new LinkedList<Artifact>();
-        LinkedList<?> remoteRepos = new LinkedList<Object>();
-        List<Dependency> deps  = (List<Dependency>) project.getRuntimeDependencies();
-        if (deps != null) {
-            for (Dependency dep : deps) {
-                Artifact artifact = factory.createArtifactWithClassifier(dep.getGroupId(), dep.getArtifactId(), dep.getVersion(), dep.getType(), dep.getClassifier());
-                resolver.resolve(artifact, remoteRepos, localRepo);
-                back.add(artifact);
-            }
+    class MyArtifactCollector  implements DependencyNodeVisitor {
+        private Artifact _branchRootTemplate;
+        private Artifact _branchRoot; //_branchRoot not null => collecting
+        
+        public MyArtifactCollector(Artifact branchRootTemplate) {
+            _branchRootTemplate = branchRootTemplate;
         }
-        back.add(project.getArtifact());
-        return back;
+        
+        public HashSet<Artifact> artifacts = new HashSet<Artifact>();
+        
+        //TODO use real glob or regexp
+        private boolean matchBranchRootTemplate(Artifact a) {
+            boolean back = true;
+            back = back && ( "*".equals(_branchRootTemplate.getGroupId()) || _branchRootTemplate.getGroupId().equals(a.getGroupId()) );
+            back = back && ( "*".equals(_branchRootTemplate.getArtifactId()) || _branchRootTemplate.getArtifactId().equals(a.getArtifactId()) );
+            back = back && ( "*".equals(_branchRootTemplate.getVersion()) || _branchRootTemplate.getVersion().equals(a.getVersion()) );
+            back = back && ( "*".equals(_branchRootTemplate.getClassifier()) || _branchRootTemplate.getClassifier().equals(a.getClassifier()) );
+            return back;
+        }
+        
+        public boolean endVisit(DependencyNode n) {
+            if ((_branchRoot != null) && _branchRoot.equals(n)) {
+                _branchRoot = null;
+            }
+            // several branch could be selected => scan all the tree
+            return true;
+        }
+
+        public boolean visit(DependencyNode n) {
+            Artifact a = n.getArtifact();
+            if (!Artifact.SCOPE_TEST.equalsIgnoreCase(a.getScope()) && !Artifact.SCOPE_PROVIDED.equalsIgnoreCase(a.getScope()) ) {
+                if ((_branchRoot == null) && matchBranchRootTemplate(a)){
+                    _branchRoot = a;
+                }
+                System.out.println("try to add :" + (_branchRoot != null) + " : " + a);
+                if ( _branchRoot != null ) {
+                    try {
+                        resolver.resolve(a, remoteRepos, localRepo);
+                        if (a.getFile() != null) {
+                            getLog().debug("add file for : " + a + " in dependency set of " + _branchRootTemplate);
+                            artifacts.add(a);
+                        }
+                    } catch (Exception e) {
+                        getLog().warn(e);
+                    }
+                }
+            }
+            return true;
+        }
     }
+
+    class MyArtifactCollector2  implements DependencyNodeVisitor {
+        
+        public HashSet<Artifact> artifacts = new HashSet<Artifact>();
+        
+        public boolean endVisit(DependencyNode n) {
+            return true;
+        }
+
+        public boolean visit(DependencyNode n) {
+            Artifact a = n.getArtifact();
+            if (!Artifact.SCOPE_TEST.equalsIgnoreCase(a.getScope()) && !Artifact.SCOPE_PROVIDED.equalsIgnoreCase(a.getScope()) ) {
+                try {
+                    resolver.resolve(a, remoteRepos, localRepo);
+                    if (a.getFile() != null) {
+                        getLog().debug("add file for : " + a );
+                        artifacts.add(a);
+                    }
+                } catch (Exception e) {
+                    getLog().warn(e);
+                }
+            }
+            return true;
+        }
+    }
+
+    private DependencyNode _rootNode = null;
+    private DependencyNode getRootNode() throws Exception {
+        if (_rootNode == null) {
+            System.out.println("ctx : "+ project + " - "+ localRepo + " - "+ artifactFactory + " - "+ artifactMetadataSource + " - "+ artifactCollector);
+            AndArtifactFilter filter = new AndArtifactFilter();
+            filter.add(new ScopeArtifactFilter(Artifact.SCOPE_RUNTIME));
+            filter.add(new TypeArtifactFilter("jar"));
+            _rootNode = dependencyTreeBuilder.buildDependencyTree( project, localRepo, artifactFactory, artifactMetadataSource, filter, null/*artifactCollector*/ );
+        }
+        return _rootNode;
+    }
+
+    public Collection<Artifact> findDependencies() throws Exception {
+        return findDependencies(project.getArtifact());
+    }
+
+    public Collection<Artifact> findDependencies(String groupId, String artifactId, String version, String classifier) throws Exception {
+        Artifact artifactTemplate = artifactFactory.createArtifactWithClassifier(groupId, artifactId, version, "jar", classifier);
+        return findDependencies(artifactTemplate);
+    }
+
+    /** Visits a node (and all dependencies) to see if it contains duplicate scala versions */
+    public Collection<Artifact> findDependencies(Artifact template) throws Exception {
+        return new DependenciesTools().findDependencies2(template);
+        /*
+        DependencyNode rootNode = getRootNode();
+        getLog().debug("findDependencies of " + artifactTemplate);
+        final MyArtifactCollector visitor = new MyArtifactCollector(artifactTemplate);
+        rootNode.accept( visitor );
+        return visitor.artifacts;
+        */
+    }
+    
+    class DependenciesTools {
+    //copy and adapted from http://maven.apache.org/shared/maven-dependency-tree/xref/org/apache/maven/shared/dependency/tree/DefaultDependencyTreeBuilder.html
+        //TODO use real glob or regexp
+        private boolean matchTemplate(Artifact a, Artifact template) {
+            boolean back = true;
+            back = back && ( "*".equals(template.getGroupId()) || template.getGroupId().equals(a.getGroupId()) );
+            back = back && ( "*".equals(template.getArtifactId()) || template.getArtifactId().equals(a.getArtifactId()) );
+            back = back && ( "*".equals(template.getVersion()) || template.getVersion().equals(a.getVersion()) );
+            back = back && ( "*".equals(template.getClassifier()) || template.getClassifier().equals(a.getClassifier()) );
+            return back;
+        }
+
+        @SuppressWarnings("unchecked")
+        private Collection<Artifact> findDependencies2(Artifact template) throws Exception {
+            System.out.println("logger " + plexusLogger);
+            DependencyTreeResolutionListener listener = new DependencyTreeResolutionListener( plexusLogger );
+            Map managedVersions = project.getManagedVersionMap();
+            Set<Artifact> dependencyArtifacts = project.getDependencyArtifacts();
+            if ( dependencyArtifacts == null ) {
+                dependencyArtifacts = project.createArtifacts( artifactFactory, null, null );
+            }
+             Artifact rootArtifact = project.getArtifact();
+             /*
+             for (Artifact a : dependencyArtifacts) {
+                 if (matchTemplate(a, template)) {
+                     rootArtifact = a;
+                     break;
+                 }
+             }
+             */
+             // TODO: note that filter does not get applied due to MNG-3236
+             AndArtifactFilter filter = new AndArtifactFilter();
+             filter.add(new ScopeArtifactFilter(Artifact.SCOPE_RUNTIME));
+             filter.add(new TypeArtifactFilter("jar"));
+             artifactCollector.collect( dependencyArtifacts, rootArtifact, managedVersions, localRepo,
+                                         project.getRemoteArtifactRepositories(), artifactMetadataSource, filter,
+                                         Collections.singletonList( listener ) );
+         
+             MyArtifactCollector2 v = new MyArtifactCollector2();
+             DependencyNode rootNode = listener.getRootNode();
+             rootNode.accept(v);
+             Collection<Artifact> back =v.artifacts;
+             System.out.println("result :" +back.size());
+             for (Artifact a : back ) {
+                 System.out.println("\t" + a);
+             }
+             return back;
+        }
+    }
+    
     @SuppressWarnings("unchecked")
     private VelocityContext addProperties(VelocityContext context, Properties p) throws Exception {
         if (p != null) {
@@ -352,4 +536,10 @@ public class JwsDirMojo extends AbstractMojo {
         back.append('.').append(artifact.getType());
         return back.toString();
     }
+
+    Logger plexusLogger = null;
+    public void enableLogging(Logger logger) {
+        plexusLogger = logger;
+    }
+    
 }
