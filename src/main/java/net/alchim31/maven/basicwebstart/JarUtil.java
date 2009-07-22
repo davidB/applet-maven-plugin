@@ -38,7 +38,7 @@ public class JarUtil {
     // TODO check that tempDir is removed on shutdown
     public static File createTempDir() throws Exception {
         if (_tmpRootDir == null) {
-            _tmpRootDir = new File(System.getProperty("java.io.tmpdir"), "jarutil.tmp");
+            _tmpRootDir = new File(System.getProperty("java.io.tmpdir", "/tmp"), "jarutil.tmp");
             Runtime.getRuntime().addShutdownHook(new Thread(){
                 @Override
                 public void run() {
@@ -82,8 +82,14 @@ public class JarUtil {
     }
     
     public static void unsign(File jarIn, File jarOut, ArchiverManager archiverManager, boolean compress) throws Exception {
+        rejar(jarIn, jarOut, archiverManager, compress, true);
+    }
+    
+    public static void rejar(File jarIn, File jarOut, ArchiverManager archiverManager, boolean compress, boolean unsign) throws Exception {
         File explodedJarDir = unjar(jarIn, archiverManager);
-        unsign(explodedJarDir);
+        if (unsign) {
+            unsign(explodedJarDir);
+        }
         jar(explodedJarDir, jarOut, archiverManager, compress);
     }
     
@@ -168,6 +174,11 @@ public class JarUtil {
         if (options != null && options.length > 0) {
             commandLine.addArguments(options);
         }
+        // pack200 doesn't work for jar >1MB by default
+        if (jar.length() > 1024*1024) {
+            System.out.println(">> big jar (" + jar.length() / 1024 + ") => modify segment-limit of pack");
+            commandLine.addArguments(new String[]{"--segment-limit=-1"});
+        }
         commandLine.addArguments(new String[]{back.getAbsolutePath(), jar.getAbsolutePath()});
         exec(commandLine, log);
         return back;
@@ -176,7 +187,14 @@ public class JarUtil {
     public static void repack(File jar, String[] options, final Log log) throws Exception {
         Commandline commandLine = new Commandline();
         commandLine.setExecutable(findJavaExec("pack200"));
-        commandLine.addArguments(options);
+        if (options != null && options.length > 0) {
+            commandLine.addArguments(options);
+        }
+        // pack200 doesn't work for jar >1MB by default
+        if (jar.length() > 1024*1024) {
+            System.out.println(">> big jar (" + jar.length() / 1024 + ") => modify segment-limit of pack");
+            commandLine.addArguments(new String[]{"--segment-limit=-1"});
+        }
         commandLine.addArguments(new String[]{"--repack", jar.getAbsolutePath()});
         exec(commandLine, log);
     }

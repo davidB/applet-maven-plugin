@@ -13,6 +13,7 @@ import java.util.Properties;
 import java.util.Set;
 
 import org.apache.maven.artifact.Artifact;
+import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.artifact.metadata.ArtifactMetadataSource;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -22,6 +23,7 @@ import org.apache.maven.artifact.resolver.ArtifactResolver;
 import org.apache.maven.artifact.resolver.filter.AndArtifactFilter;
 import org.apache.maven.artifact.resolver.filter.ScopeArtifactFilter;
 import org.apache.maven.artifact.resolver.filter.TypeArtifactFilter;
+import org.apache.maven.artifact.versioning.VersionRange;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.project.MavenProject;
@@ -83,6 +85,12 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
      * @parameter expression="${jnlp.packEnabled}" default-value="true"
      */
     private boolean packEnabled;
+
+    /**
+     * Should unpack and verify signature after packing ?
+     * @parameter expression="${jnlp.pack.verify.signature}" default-value="false"
+     */
+    private boolean packVerifySignature;
 
     /**
      * Optionnal additionnal options to use when calling pack200 (eg:
@@ -191,32 +199,83 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
                 outputDirectory.mkdirs();
             }
 
+            getLog().info("step 0 : initialisation");
             initJars(); //reset jarList before template fill it
-
+            
+            getLog().info("step 1 : register proguard out jar");
+            for(File file : inputDirectory.listFiles()) {
+                if (file.getName().startsWith(".#") || file.getName().startsWith("#")) {
+                    continue;
+                }
+                String classifier = null;
+                if (file.getName().endsWith(".proguard.conf") && file.canRead()) {
+                    classifier = file.getName().substring(0, file.getName().length() - ".proguard.conf".length());
+                }
+                if (file.getName().endsWith(".proguard.conf.vm") && file.canRead()) {
+                    classifier = file.getName().substring(0, file.getName().length() - ".proguard.conf.vm".length());
+                }
+                Artifact pArtifact = new DefaultArtifact(project.getGroupId(), project.getArtifactId(), VersionRange.createFromVersion(project.getVersion()), Artifact.SCOPE_RUNTIME, "jar", classifier, project.getArtifact().getArtifactHandler(), true);
+                pArtifact.setFile(new File(outputDirectory, project.getArtifactId() + "-" + project.getVersion() + "-" + classifier + ".jar"));
+                _generatedJars.add(pArtifact);
+                getLog().debug("register" + pArtifact);
+            }
+            
+            getLog().info("step 2 : copy files and process templates");
             VelocityContext context = initTemplateContext();
             for(File file : inputDirectory.listFiles()) {
                 if (file.getName().endsWith(".vm") && file.canRead() && !file.getName().startsWith(".#") && !file.getName().startsWith("#")) {
                     getLog().info("process template : " + file.getName());
                     // convert template to regular file in the outputdiretory and remove the '.vm' extension
-                    generateTemplate(context, file, new File(outputDirectory, file.getName().substring(0, file.getName().length() - 3)));
+                    File out = new File(outputDirectory, file.getName().substring(0, file.getName().length() - 3));
+                    generateTemplate(context, file, out);
                 } else {
                     // copy file
                     FileUtils.copyFile(file, new File(outputDirectory, file.getName()));
                 }
             }
 
-            getLog().info("processJars");
+            getLog().info("step 3 : run proguard");
+            for (Artifact a : findGenerated()) {
+                File confFile =  new File(outputDirectory, a.getClassifier() + ".proguard.conf");
+                if (confFile.canRead()) {
+                    getLog().info("read configuration file " + confFile + " to generate " + a);
+                    ProguardHelper.run(confFile, a.getFile());
+                } else {
+                    getLog().warn("can't read configuration file " + confFile + " to generate " + a);
+                }
+            }
+
+            getLog().info("step 4 : generate .jar (and .pack.gz)");
             processJars(outputDirectory);
         } catch (Exception e ) {
             throw new MojoExecutionException("Error generation jws dir", e );
         }
     }
 
+    private static HashSet<Artifact> _generatedJars = new HashSet<Artifact>();
+
+    public Collection<Artifact> findGenerated() throws Exception {
+        System.out.println("size of _generatedJars when requested : " + _generatedJars.size());
+        return _generatedJars;
+    }
+
+    public Collection<Artifact> findGenerated(String classifier) throws Exception {
+        HashSet<Artifact> back = new HashSet<Artifact>();
+        for(Artifact a : _generatedJars) {
+            if (classifier.equalsIgnoreCase(a.getClassifier())) {
+                back.add(a);
+            }
+        }
+        System.out.println("size of _generatedJars for "+ classifier + " when requested : " + back.size());
+        return back;
+    }
+    
     private VelocityContext initTemplateContext() throws Exception {
         Velocity.init();
         VelocityContext context = new VelocityContext();
         context = addProperties(context, System.getProperties());
         context = addProperties(context, templateValues);
+        context.put("outputDir", this.outputDirectory);
         context.put("jws", this);
         context.put("project", project);
         context.put("packEnabled", packEnabled);
@@ -322,8 +381,10 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
     }
 
     /** Visits a node (and all dependencies) to see if it contains duplicate scala versions */
+    @SuppressWarnings("unchecked")
     public Collection<Artifact> findDependencies(Artifact template) throws Exception {
-        return new DependenciesTools().findDependencies2(template);
+        return project.getRuntimeArtifacts();
+        //return new DependenciesTools().findDependencies2(template);
         /*
         DependencyNode rootNode = getRootNode();
         getLog().debug("findDependencies of " + artifactTemplate);
@@ -475,6 +536,8 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
     //    jar verified.
     private void processJars(File outputDir) throws Exception {
         JarSigner signer = new JarSigner(sign, JarUtil.createTempDir(), getLog(), verbose);
+        long totalSizeJar = 0;
+        long totalSizePacked = 0;
         for(Artifact artifact : _jars) {
             if (artifact == null) {
                 continue;
@@ -482,7 +545,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
             File in = artifact.getFile();
             File dest = new File(outputDir, findFilename(artifact, true));
             getLog().debug("unsign :" + in + " to " + dest);
-            JarUtil.unsign(in, dest, archiverManager, true);
+            JarUtil.rejar(in, dest, archiverManager, true, true);
             
             if (packEnabled) {
                 getLog().debug("repack : " + dest);
@@ -497,17 +560,25 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
                 getLog().debug("pack :" + dest);
                 File tmp3 = new File(outputDir, "tmp3.jar");
                 try {
-                    JarUtil.pack(dest, packOptions, getLog());
-
-                    getLog().debug("verify packed");
-                    JarUtil.unpack(dest, tmp3, getLog());
-                    JarUtil.verifySignature(tmp3, getLog());
+                    File packed = JarUtil.pack(dest, packOptions, getLog());
+                    totalSizePacked += packed.length();
+                    if (packVerifySignature) {
+                        getLog().debug("verify packed");
+                        JarUtil.unpack(dest, tmp3, getLog());
+                        JarUtil.verifySignature(tmp3, getLog());
+                    }
+//                    long sizeBefore = dest.length();
+//                    JarUtil.rejar(dest, dest, archiverManager, true, false);
+//                    System.out.println("size before rejar : "+ sizeBefore + " - "+ dest.length() + " = " + (sizeBefore - dest.length()));
                 } finally {
                     tmp3.delete();
                 }
             }
-            getLog().info("end generation of " + dest);
+            totalSizeJar += dest.length();
+            getLog().debug("end generation of " + dest);
         }
+        getLog().info("total size of .jar         : " + totalSizeJar / 1024 + " KB");
+        getLog().info("total size of .jar.pack.gz : " + totalSizePacked / 1024 + " KB ~ " + (totalSizePacked*100/totalSizeJar) + "%");
     }
 
     private static boolean isSnapshot(Artifact artifact) {
