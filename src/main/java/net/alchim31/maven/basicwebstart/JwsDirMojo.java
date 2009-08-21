@@ -277,6 +277,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
         Velocity.init();
         VelocityContext context = new VelocityContext();
         context = addProperties(context, System.getProperties());
+        context = addProperties(context, project.getProperties());
         context = addProperties(context, templateValues);
         context.put("outputDir", this.outputDirectory);
         context.put("jws", this);
