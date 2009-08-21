@@ -3,6 +3,7 @@ package net.alchim31.maven.basicwebstart;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -161,7 +162,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
      */
     protected ArtifactRepository localRepo;
     private LinkedList<?> remoteRepos = new LinkedList<Object>();
-    
+
     /**
      * To look up Archiver/UnArchiver implementations
      *
@@ -172,7 +173,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
 
     /**
      * The artifact collector to use.
-     * 
+     *
      * @component
      * @required
      * @readonly
@@ -181,13 +182,13 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
 
     /**
      * The dependency tree builder to use.
-     * 
+     *
      * @component
      * @required
      * @readonly
      */
     private DependencyTreeBuilder dependencyTreeBuilder;
-    
+
     public void execute() throws MojoExecutionException {
         try {
             getLog().info("start on : " + inputDirectory);
@@ -201,8 +202,8 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
 
             getLog().info("step 0 : initialisation");
             initJars(); //reset jarList before template fill it
-            
-            getLog().info("step 1 : register proguard out jar");
+
+            getLog().info("step 1 : register proguard out jar (if exists)");
             for(File file : inputDirectory.listFiles()) {
                 if (file.getName().startsWith(".#") || file.getName().startsWith("#")) {
                     continue;
@@ -214,12 +215,14 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
                 if (file.getName().endsWith(".proguard.conf.vm") && file.canRead()) {
                     classifier = file.getName().substring(0, file.getName().length() - ".proguard.conf.vm".length());
                 }
-                Artifact pArtifact = new DefaultArtifact(project.getGroupId(), project.getArtifactId(), VersionRange.createFromVersion(project.getVersion()), Artifact.SCOPE_RUNTIME, "jar", classifier, project.getArtifact().getArtifactHandler(), true);
-                pArtifact.setFile(new File(outputDirectory, project.getArtifactId() + "-" + project.getVersion() + "-" + classifier + ".jar"));
-                _generatedJars.add(pArtifact);
-                getLog().debug("register" + pArtifact);
+                if (classifier != null) {
+                    Artifact pArtifact = new DefaultArtifact(project.getGroupId(), project.getArtifactId(), VersionRange.createFromVersion(project.getVersion()), Artifact.SCOPE_RUNTIME, "jar", classifier, project.getArtifact().getArtifactHandler(), true);
+                    pArtifact.setFile(new File(outputDirectory, project.getArtifactId() + "-" + project.getVersion() + "-" + classifier + ".jar"));
+                    _generatedJars.add(pArtifact);
+                    getLog().debug("register" + pArtifact);
+                }
             }
-            
+
             getLog().info("step 2 : copy files and process templates");
             VelocityContext context = initTemplateContext();
             for(File file : inputDirectory.listFiles()) {
@@ -269,7 +272,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
         System.out.println("size of _generatedJars for "+ classifier + " when requested : " + back.size());
         return back;
     }
-    
+
     private VelocityContext initTemplateContext() throws Exception {
         Velocity.init();
         VelocityContext context = new VelocityContext();
@@ -286,13 +289,13 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
     class MyArtifactCollector  implements DependencyNodeVisitor {
         private Artifact _branchRootTemplate;
         private Artifact _branchRoot; //_branchRoot not null => collecting
-        
+
         public MyArtifactCollector(Artifact branchRootTemplate) {
             _branchRootTemplate = branchRootTemplate;
         }
-        
+
         public HashSet<Artifact> artifacts = new HashSet<Artifact>();
-        
+
         //TODO use real glob or regexp
         private boolean matchBranchRootTemplate(Artifact a) {
             boolean back = true;
@@ -302,7 +305,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
             back = back && ( "*".equals(_branchRootTemplate.getClassifier()) || _branchRootTemplate.getClassifier().equals(a.getClassifier()) );
             return back;
         }
-        
+
         public boolean endVisit(DependencyNode n) {
             if ((_branchRoot != null) && _branchRoot.equals(n)) {
                 _branchRoot = null;
@@ -335,9 +338,9 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
     }
 
     class MyArtifactCollector2  implements DependencyNodeVisitor {
-        
+
         public HashSet<Artifact> artifacts = new HashSet<Artifact>();
-        
+
         public boolean endVisit(DependencyNode n) {
             return true;
         }
@@ -383,7 +386,10 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
     /** Visits a node (and all dependencies) to see if it contains duplicate scala versions */
     @SuppressWarnings("unchecked")
     public Collection<Artifact> findDependencies(Artifact template) throws Exception {
-        return project.getRuntimeArtifacts();
+        ArrayList<Artifact> back = new ArrayList<Artifact>();
+        back.add(project.getArtifact());
+        back.addAll(project.getRuntimeArtifacts());
+        return back;
         //return new DependenciesTools().findDependencies2(template);
         /*
         DependencyNode rootNode = getRootNode();
@@ -393,7 +399,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
         return visitor.artifacts;
         */
     }
-    
+
     class DependenciesTools {
     //copy and adapted from http://maven.apache.org/shared/maven-dependency-tree/xref/org/apache/maven/shared/dependency/tree/DefaultDependencyTreeBuilder.html
         //TODO use real glob or regexp
@@ -431,11 +437,11 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
              artifactCollector.collect( dependencyArtifacts, rootArtifact, managedVersions, localRepo,
                                          project.getRemoteArtifactRepositories(), artifactMetadataSource, filter,
                                          Collections.singletonList( listener ) );
-         
+
              MyArtifactCollector2 v = new MyArtifactCollector2();
              DependencyNode rootNode = listener.getRootNode();
              rootNode.accept(v);
-             Collection<Artifact> back =v.artifacts;
+             Collection<Artifact> back = v.artifacts;
              System.out.println("result :" +back.size());
              for (Artifact a : back ) {
                  System.out.println("\t" + a);
@@ -443,7 +449,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
              return back;
         }
     }
-    
+
     @SuppressWarnings("unchecked")
     private VelocityContext addProperties(VelocityContext context, Properties p) throws Exception {
         if (p != null) {
@@ -546,15 +552,15 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
             File dest = new File(outputDir, findFilename(artifact, true));
             getLog().debug("unsign :" + in + " to " + dest);
             JarUtil.rejar(in, dest, archiverManager, true, true);
-            
+
             if (packEnabled) {
                 getLog().debug("repack : " + dest);
                 JarUtil.repack(dest, packOptions, getLog());
             }
-            
+
             getLog().debug("sign  : " + dest);
             signer.sign(dest, dest);
-            
+
             //signer.verify(out);
             if (packEnabled) {
                 getLog().debug("pack :" + dest);
@@ -612,5 +618,5 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
     public void enableLogging(Logger logger) {
         plexusLogger = logger;
     }
-    
+
 }
