@@ -1,13 +1,15 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>net.alchim31.maven</groupId>
   <artifactId>maven-basicwebstart-plugin</artifactId>
   <packaging>maven-plugin</packaging>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1</version>
   <name>maven-basicwebstart-plugin Maven Mojo</name>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <mercury.version>1.0-alpha-6</mercury.version>
   </properties>
 
   <dependencies>
@@ -23,22 +25,22 @@
       <version>2.0.9</version>
       <scope>provided</scope>
     </dependency>
-<dependency>
-    <groupId>org.apache.maven.shared</groupId>
-    <artifactId>maven-dependency-tree</artifactId>
-    <version>1.2</version>
-</dependency> 
-        <dependency>
-            <groupId>org.apache.maven.shared</groupId>
-            <artifactId>maven-dependency-analyzer</artifactId>
-            <version>1.1</version>
-        </dependency>
-            <dependency>
+    <dependency>
+      <groupId>org.apache.maven.shared</groupId>
+      <artifactId>maven-dependency-tree</artifactId>
+      <version>1.2</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.shared</groupId>
+      <artifactId>maven-dependency-analyzer</artifactId>
+      <version>1.1</version>
+    </dependency>
+    <dependency>
       <groupId>net.sf.proguard</groupId>
       <artifactId>proguard</artifactId>
       <version>4.3</version>
     </dependency>
-        
+
     <dependency>
       <groupId>org.apache.velocity</groupId>
       <artifactId>velocity</artifactId>
@@ -53,7 +55,10 @@
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-archiver</artifactId>
       <version>1.0-alpha-11</version>
-      <!-- see http://markmail.org/message/ouwijgfbimnf22sk?q=component%2Eorg%2Ecodehaus%2Eplexus%2Earchiver%2Emanager%2EArchiverManager&page=1&refer=2p3xidzgwsx4y5ir -->
+      <!--
+        see
+        http://markmail.org/message/ouwijgfbimnf22sk?q=component%2Eorg%2Ecodehaus%2Eplexus%2Earchiver%2Emanager%2EArchiverManager&page=1&refer=2p3xidzgwsx4y5ir
+      -->
       <exclusions>
         <exclusion>
           <groupId>org.codehaus.plexus</groupId>
@@ -79,6 +84,24 @@
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <version>4.5</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.mercury</groupId>
+      <artifactId>mercury-repo-local-m2</artifactId>
+      <version>${mercury.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.mercury</groupId>
+      <artifactId>mercury-repo-remote-m2</artifactId>
+      <version>${mercury.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.mercury</groupId>
+      <artifactId>mercury-repo-virtual</artifactId>
+      <version>${mercury.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

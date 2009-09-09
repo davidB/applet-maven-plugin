@@ -3,42 +3,25 @@ package net.alchim31.maven.basicwebstart;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.artifact.metadata.ArtifactMetadataSource;
 import org.apache.maven.artifact.repository.ArtifactRepository;
-import org.apache.maven.artifact.resolver.ArtifactCollector;
-import org.apache.maven.artifact.resolver.ArtifactResolutionResult;
 import org.apache.maven.artifact.resolver.ArtifactResolver;
-import org.apache.maven.artifact.resolver.filter.AndArtifactFilter;
-import org.apache.maven.artifact.resolver.filter.ScopeArtifactFilter;
-import org.apache.maven.artifact.resolver.filter.TypeArtifactFilter;
 import org.apache.maven.artifact.versioning.VersionRange;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.project.MavenProject;
-import org.apache.maven.shared.dependency.tree.DependencyNode;
-import org.apache.maven.shared.dependency.tree.DependencyTreeBuilder;
-import org.apache.maven.shared.dependency.tree.DependencyTreeResolutionListener;
-import org.apache.maven.shared.dependency.tree.traversal.CollectingDependencyNodeVisitor;
-import org.apache.maven.shared.dependency.tree.traversal.DependencyNodeVisitor;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.Velocity;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
 import org.codehaus.plexus.util.FileUtils;
-
-import org.codehaus.plexus.logging.Logger;
 
 /**
  * generate jnlp (from template), rename, sign, pack jar
@@ -47,7 +30,7 @@ import org.codehaus.plexus.logging.Logger;
  * @phase package
  * @author david.bernard
  */
-public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logging.LogEnabled{
+public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.logging.LogEnabled{
 
     /**
      * Location of the file.
@@ -161,7 +144,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
      * @required
      */
     protected ArtifactRepository localRepo;
-    private LinkedList<?> remoteRepos = new LinkedList<Object>();
+
 
     /**
      * To look up Archiver/UnArchiver implementations
@@ -171,23 +154,25 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
      */
     protected ArchiverManager archiverManager;
 
-    /**
-     * The artifact collector to use.
-     *
-     * @component
-     * @required
-     * @readonly
-     */
-    private ArtifactCollector artifactCollector;
+//    /**
+//     * The artifact collector to use.
+//     *
+//     * @component
+//     * @required
+//     * @readonly
+//     */
+//    private ArtifactCollector artifactCollector;
+//
+//    /**
+//     * The dependency tree builder to use.
+//     *
+//     * @component
+//     * @required
+//     * @readonly
+//     */
+//    private DependencyTreeBuilder dependencyTreeBuilder;
 
-    /**
-     * The dependency tree builder to use.
-     *
-     * @component
-     * @required
-     * @readonly
-     */
-    private DependencyTreeBuilder dependencyTreeBuilder;
+    private DependencyFinder _depFinder = null;
 
     public void execute() throws MojoExecutionException {
         try {
@@ -202,6 +187,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
 
             getLog().info("step 0 : initialisation");
             initJars(); //reset jarList before template fill it
+            _depFinder = new DependencyFinderImpl0(project);
 
             getLog().info("step 1 : register proguard out jar (if exists)");
             for(File file : inputDirectory.listFiles()) {
@@ -219,7 +205,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
                     Artifact pArtifact = new DefaultArtifact(project.getGroupId(), project.getArtifactId(), VersionRange.createFromVersion(project.getVersion()), Artifact.SCOPE_RUNTIME, "jar", classifier, project.getArtifact().getArtifactHandler(), true);
                     pArtifact.setFile(new File(outputDirectory, project.getArtifactId() + "-" + project.getVersion() + "-" + classifier + ".jar"));
                     _generatedJars.add(pArtifact);
-                    getLog().debug("register" + pArtifact);
+                    getLog().debug(" - - register" + pArtifact);
                 }
             }
 
@@ -227,7 +213,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
             VelocityContext context = initTemplateContext();
             for(File file : inputDirectory.listFiles()) {
                 if (file.getName().endsWith(".vm") && file.canRead() && !file.getName().startsWith(".#") && !file.getName().startsWith("#")) {
-                    getLog().info("process template : " + file.getName());
+                    getLog().info(" - - process template : " + file.getName());
                     // convert template to regular file in the outputdiretory and remove the '.vm' extension
                     File out = new File(outputDirectory, file.getName().substring(0, file.getName().length() - 3));
                     generateTemplate(context, file, out);
@@ -237,14 +223,14 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
                 }
             }
 
-            getLog().info("step 3 : run proguard");
+            getLog().info("step 3 : run proguard on *.proguard.conf");
             for (Artifact a : findGenerated()) {
                 File confFile =  new File(outputDirectory, a.getClassifier() + ".proguard.conf");
                 if (confFile.canRead()) {
-                    getLog().info("read configuration file " + confFile + " to generate " + a);
+                    getLog().info(" - - read configuration file " + confFile + " to generate " + a);
                     ProguardHelper.run(confFile, a.getFile());
                 } else {
-                    getLog().warn("can't read configuration file " + confFile + " to generate " + a);
+                    getLog().warn(" - - can't read configuration file " + confFile + " to generate " + a);
                 }
             }
 
@@ -258,7 +244,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
     private static HashSet<Artifact> _generatedJars = new HashSet<Artifact>();
 
     public Collection<Artifact> findGenerated() throws Exception {
-        System.out.println("size of _generatedJars when requested : " + _generatedJars.size());
+        //System.out.println("size of _generatedJars when requested : " + _generatedJars.size());
         return _generatedJars;
     }
 
@@ -269,7 +255,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
                 back.add(a);
             }
         }
-        System.out.println("size of _generatedJars for "+ classifier + " when requested : " + back.size());
+        //System.out.println("size of _generatedJars for "+ classifier + " when requested : " + back.size());
         return back;
     }
 
@@ -287,93 +273,6 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
         return context;
     }
 
-    class MyArtifactCollector  implements DependencyNodeVisitor {
-        private Artifact _branchRootTemplate;
-        private Artifact _branchRoot; //_branchRoot not null => collecting
-
-        public MyArtifactCollector(Artifact branchRootTemplate) {
-            _branchRootTemplate = branchRootTemplate;
-        }
-
-        public HashSet<Artifact> artifacts = new HashSet<Artifact>();
-
-        //TODO use real glob or regexp
-        private boolean matchBranchRootTemplate(Artifact a) {
-            boolean back = true;
-            back = back && ( "*".equals(_branchRootTemplate.getGroupId()) || _branchRootTemplate.getGroupId().equals(a.getGroupId()) );
-            back = back && ( "*".equals(_branchRootTemplate.getArtifactId()) || _branchRootTemplate.getArtifactId().equals(a.getArtifactId()) );
-            back = back && ( "*".equals(_branchRootTemplate.getVersion()) || _branchRootTemplate.getVersion().equals(a.getVersion()) );
-            back = back && ( "*".equals(_branchRootTemplate.getClassifier()) || _branchRootTemplate.getClassifier().equals(a.getClassifier()) );
-            return back;
-        }
-
-        public boolean endVisit(DependencyNode n) {
-            if ((_branchRoot != null) && _branchRoot.equals(n)) {
-                _branchRoot = null;
-            }
-            // several branch could be selected => scan all the tree
-            return true;
-        }
-
-        public boolean visit(DependencyNode n) {
-            Artifact a = n.getArtifact();
-            if (!Artifact.SCOPE_TEST.equalsIgnoreCase(a.getScope()) && !Artifact.SCOPE_PROVIDED.equalsIgnoreCase(a.getScope()) ) {
-                if ((_branchRoot == null) && matchBranchRootTemplate(a)){
-                    _branchRoot = a;
-                }
-                System.out.println("try to add :" + (_branchRoot != null) + " : " + a);
-                if ( _branchRoot != null ) {
-                    try {
-                        resolver.resolve(a, remoteRepos, localRepo);
-                        if (a.getFile() != null) {
-                            getLog().debug("add file for : " + a + " in dependency set of " + _branchRootTemplate);
-                            artifacts.add(a);
-                        }
-                    } catch (Exception e) {
-                        getLog().warn(e);
-                    }
-                }
-            }
-            return true;
-        }
-    }
-
-    class MyArtifactCollector2  implements DependencyNodeVisitor {
-
-        public HashSet<Artifact> artifacts = new HashSet<Artifact>();
-
-        public boolean endVisit(DependencyNode n) {
-            return true;
-        }
-
-        public boolean visit(DependencyNode n) {
-            Artifact a = n.getArtifact();
-            if (!Artifact.SCOPE_TEST.equalsIgnoreCase(a.getScope()) && !Artifact.SCOPE_PROVIDED.equalsIgnoreCase(a.getScope()) ) {
-                try {
-                    resolver.resolve(a, remoteRepos, localRepo);
-                    if (a.getFile() != null) {
-                        getLog().debug("add file for : " + a );
-                        artifacts.add(a);
-                    }
-                } catch (Exception e) {
-                    getLog().warn(e);
-                }
-            }
-            return true;
-        }
-    }
-
-    private DependencyNode _rootNode = null;
-    private DependencyNode getRootNode() throws Exception {
-        if (_rootNode == null) {
-            System.out.println("ctx : "+ project + " - "+ localRepo + " - "+ artifactFactory + " - "+ artifactMetadataSource + " - "+ artifactCollector);
-            AndArtifactFilter filter = new AndArtifactFilter();
-            filter.add(new ScopeArtifactFilter(Artifact.SCOPE_RUNTIME));
-            filter.add(new TypeArtifactFilter("jar"));
-            _rootNode = dependencyTreeBuilder.buildDependencyTree( project, localRepo, artifactFactory, artifactMetadataSource, filter, null/*artifactCollector*/ );
-        }
-        return _rootNode;
-    }
 
     public Collection<Artifact> findDependencies() throws Exception {
         return findDependencies(project.getArtifact());
@@ -384,72 +283,12 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
         return findDependencies(artifactTemplate);
     }
 
-    /** Visits a node (and all dependencies) to see if it contains duplicate scala versions */
-    @SuppressWarnings("unchecked")
     public Collection<Artifact> findDependencies(Artifact template) throws Exception {
-        ArrayList<Artifact> back = new ArrayList<Artifact>();
-        back.add(project.getArtifact());
-        back.addAll(project.getRuntimeArtifacts());
-        return back;
-        //return new DependenciesTools().findDependencies2(template);
-        /*
-        DependencyNode rootNode = getRootNode();
-        getLog().debug("findDependencies of " + artifactTemplate);
-        final MyArtifactCollector visitor = new MyArtifactCollector(artifactTemplate);
-        rootNode.accept( visitor );
-        return visitor.artifacts;
-        */
+        return _depFinder.find(template);
     }
 
     class DependenciesTools {
-    //copy and adapted from http://maven.apache.org/shared/maven-dependency-tree/xref/org/apache/maven/shared/dependency/tree/DefaultDependencyTreeBuilder.html
-        //TODO use real glob or regexp
-        private boolean matchTemplate(Artifact a, Artifact template) {
-            boolean back = true;
-            back = back && ( "*".equals(template.getGroupId()) || template.getGroupId().equals(a.getGroupId()) );
-            back = back && ( "*".equals(template.getArtifactId()) || template.getArtifactId().equals(a.getArtifactId()) );
-            back = back && ( "*".equals(template.getVersion()) || template.getVersion().equals(a.getVersion()) );
-            back = back && ( "*".equals(template.getClassifier()) || template.getClassifier().equals(a.getClassifier()) );
-            return back;
-        }
-
-        @SuppressWarnings("unchecked")
-        private Collection<Artifact> findDependencies2(Artifact template) throws Exception {
-            System.out.println("logger " + plexusLogger);
-            DependencyTreeResolutionListener listener = new DependencyTreeResolutionListener( plexusLogger );
-            Map managedVersions = project.getManagedVersionMap();
-            Set<Artifact> dependencyArtifacts = project.getDependencyArtifacts();
-            if ( dependencyArtifacts == null ) {
-                dependencyArtifacts = project.createArtifacts( artifactFactory, null, null );
-            }
-             Artifact rootArtifact = project.getArtifact();
-             /*
-             for (Artifact a : dependencyArtifacts) {
-                 if (matchTemplate(a, template)) {
-                     rootArtifact = a;
-                     break;
-                 }
-             }
-             */
-             // TODO: note that filter does not get applied due to MNG-3236
-             AndArtifactFilter filter = new AndArtifactFilter();
-             filter.add(new ScopeArtifactFilter(Artifact.SCOPE_RUNTIME));
-             filter.add(new TypeArtifactFilter("jar"));
-             artifactCollector.collect( dependencyArtifacts, rootArtifact, managedVersions, localRepo,
-                                         project.getRemoteArtifactRepositories(), artifactMetadataSource, filter,
-                                         Collections.singletonList( listener ) );
-
-             MyArtifactCollector2 v = new MyArtifactCollector2();
-             DependencyNode rootNode = listener.getRootNode();
-             rootNode.accept(v);
-             Collection<Artifact> back = v.artifacts;
-             System.out.println("result :" +back.size());
-             for (Artifact a : back ) {
-                 System.out.println("\t" + a);
-             }
-             return back;
-        }
-    }
+     }
 
     @SuppressWarnings("unchecked")
     private VelocityContext addProperties(VelocityContext context, Properties p) throws Exception {
@@ -472,7 +311,7 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
             FileWriter output = new FileWriter(out);
             try {
                 if (!Velocity.evaluate(context, output, in.getName(), input)) {
-                    getLog().warn("failed to process template :" + in);
+                    getLog().warn(" - - failed to process template :" + in);
                 }
 //            Template template = Velocity.getTemplate(path);
 //            template.merge(context, output);
@@ -551,26 +390,26 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
             }
             File in = artifact.getFile();
             File dest = new File(outputDir, findFilename(artifact, true));
-            getLog().debug("unsign :" + in + " to " + dest);
+            getLog().debug(" - - unsign :" + in + " to " + dest);
             JarUtil.rejar(in, dest, archiverManager, true, true);
 
             if (packEnabled) {
-                getLog().debug("repack : " + dest);
+                getLog().debug(" - - repack : " + dest);
                 JarUtil.repack(dest, packOptions, getLog());
             }
 
-            getLog().debug("sign  : " + dest);
+            getLog().debug(" - - sign  : " + dest);
             signer.sign(dest, dest);
 
             //signer.verify(out);
             if (packEnabled) {
-                getLog().debug("pack :" + dest);
+                getLog().debug(" - - pack :" + dest);
                 File tmp3 = new File(outputDir, "tmp3.jar");
                 try {
                     File packed = JarUtil.pack(dest, packOptions, getLog());
                     totalSizePacked += packed.length();
                     if (packVerifySignature) {
-                        getLog().debug("verify packed");
+                        getLog().debug(" - - verify packed");
                         JarUtil.unpack(dest, tmp3, getLog());
                         JarUtil.verifySignature(tmp3, getLog());
                     }
@@ -584,8 +423,8 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
             totalSizeJar += dest.length();
             getLog().debug("end generation of " + dest);
         }
-        getLog().info("total size of .jar         : " + totalSizeJar / 1024 + " KB");
-        getLog().info("total size of .jar.pack.gz : " + totalSizePacked / 1024 + " KB ~ " + (totalSizePacked*100/totalSizeJar) + "%");
+        getLog().info(" - - total size of .jar         : " + totalSizeJar / 1024 + " KB");
+        getLog().info(" - - total size of .jar.pack.gz : " + totalSizePacked / 1024 + " KB ~ " + (totalSizePacked*100/totalSizeJar) + "%");
     }
 
     private static boolean isSnapshot(Artifact artifact) {
@@ -614,10 +453,4 @@ public class JwsDirMojo extends AbstractMojo implements org.codehaus.plexus.logg
         back.append('.').append(artifact.getType());
         return back.toString();
     }
-
-    Logger plexusLogger = null;
-    public void enableLogging(Logger logger) {
-        plexusLogger = logger;
-    }
-
 }
