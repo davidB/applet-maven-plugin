@@ -5,23 +5,39 @@
 
 package net.alchim31.maven.basicwebstart;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
 
 import org.codehaus.plexus.util.FileUtils;
-import org.codehaus.plexus.archiver.UnArchiver;
-import org.codehaus.plexus.archiver.jar.JarArchiver;
-import org.codehaus.plexus.archiver.manager.ArchiverManager;
+import org.codehaus.plexus.util.IOUtil;
+import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.logging.Log;
+import org.codehaus.plexus.util.cli.Arg;
 import org.codehaus.plexus.util.cli.CommandLineUtils;
 import org.codehaus.plexus.util.cli.Commandline;
 import org.codehaus.plexus.util.cli.StreamConsumer;
 
+import com.google.common.base.Function;
+import com.google.common.base.Joiner;
+import com.google.common.collect.Collections2;
+import com.google.common.collect.Iterables;
+
 /**
- *
+ * Note 2009-09-21 : no longer use ArchiveManager, because it failed when running in 4 thread in //, when it execute external command 'sh -c ls -1lnaR ...'
  * @author dwayne
  */
 public class JarUtil {
@@ -39,32 +55,30 @@ public class JarUtil {
     public static File createTempDir() throws Exception {
         if (_tmpRootDir == null) {
             _tmpRootDir = new File(System.getProperty("java.io.tmpdir", "/tmp"), "jarutil.tmp");
-            Runtime.getRuntime().addShutdownHook(new Thread(){
-                @Override
-                public void run() {
-                    super.run();
-                    try {
-                        if (_tmpRootDir.exists()) {
-                            FileUtils.deleteDirectory(_tmpRootDir);
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            });
+//            Runtime.getRuntime().addShutdownHook(new Thread(){
+//                @Override
+//                public void run() {
+//                    super.run();
+//                    try {
+//                        if (_tmpRootDir.exists()) {
+//                            FileUtils.deleteDirectory(_tmpRootDir);
+//                        }
+//                    } catch (IOException e) {
+//                        e.printStackTrace();
+//                    }
+//                }
+//            });
         }
         File dir = new File(_tmpRootDir, String.valueOf(System.currentTimeMillis()));
         dir.mkdirs();
         return dir;
     }
 
-    public static File unjar(File jarFile, ArchiverManager archiverManager) throws Exception {
+    public static File unjar(File jarFile) throws Exception {
         File tempDirParent = createTempDir();
 
-        String archiveExt = FileUtils.getExtension( jarFile.getAbsolutePath() ).toLowerCase();
-
         // create temp dir
-        File tempDir = new File( tempDirParent, jarFile.getName() );
+        File tempDir = new File( tempDirParent, jarFile.getName() + ".dir" );
 
         if (!tempDir.mkdir()) {
             throw new IOException( "Error creating temporary directory: " + tempDir );
@@ -74,23 +88,40 @@ public class JarUtil {
         // to access/change its contents before the file is rejared..
 
         // extract jar into temporary directory
-        UnArchiver unArchiver = archiverManager.getUnArchiver( archiveExt );
-        unArchiver.setSourceFile( jarFile );
-        unArchiver.setDestDirectory( tempDir );
-        unArchiver.extract();
-        return tempDir;
+        return unjar(jarFile, tempDir);
     }
     
-    public static void unsign(File jarIn, File jarOut, ArchiverManager archiverManager, boolean compress) throws Exception {
-        rejar(jarIn, jarOut, archiverManager, compress, true);
+    public static File unjar(File jarFile, File outdir) throws Exception {
+        JarFile jfile = new JarFile(jarFile);
+        Enumeration<JarEntry> e = jfile.entries();
+        while(e.hasMoreElements()) {
+            JarEntry entry = e.nextElement();
+            File f = new File(outdir, entry.getName());
+            if (entry.isDirectory()) {
+                f.mkdirs();
+            } else {
+                f.getParentFile().mkdirs();
+                InputStream in = jfile.getInputStream(entry);
+                OutputStream os = new FileOutputStream(f);
+                try {
+                    IOUtil.copy(in, os);
+                } finally {
+                    IOUtil.close(os);
+                    IOUtil.close(in);
+                }
+            }
+        }
+        return outdir;
     }
     
-    public static void rejar(File jarIn, File jarOut, ArchiverManager archiverManager, boolean compress, boolean unsign) throws Exception {
-        File explodedJarDir = unjar(jarIn, archiverManager);
+    //TODO optimisation : avoid exploding files on FS (memory pipeline)
+    public static void rejar(File jarIn, File jarOut, boolean compress, boolean unsign) throws Exception {
+        File explodedJarDir = unjar(jarIn);
         if (unsign) {
             unsign(explodedJarDir);
         }
-        jar(explodedJarDir, jarOut, archiverManager, compress);
+        jar(explodedJarDir, jarOut, compress);
+        FileUtils.deleteDirectory(explodedJarDir);
     }
     
     public static void unsign(File explodedJarDir) throws Exception {
@@ -115,26 +146,72 @@ public class JarUtil {
         }
     }
 
-    public static void jar(File explodedJarDir, File jarFile, ArchiverManager archiverManager, boolean compress) throws Exception {
-        JarArchiver jarArchiver = (JarArchiver) archiverManager.getArchiver( "jar" );
-        jarArchiver.setCompress( compress );
-        jarArchiver.setUpdateMode( false );
-        jarArchiver.addDirectory( explodedJarDir );
-        jarArchiver.setDestFile( jarFile );
-        File manifestFile = new File(explodedJarDir, "META-INF/MANIFEST.MF");
-        if (manifestFile.exists()) {
-            jarArchiver.setManifest(manifestFile);
-        }
+    public static void jar(File explodedJarDir, File jarFile, boolean compress) throws Exception {
+//        JarArchiver jarArchiver = (JarArchiver) archiverManager.getArchiver( "jar" );
+//        jarArchiver.setCompress( compress );
+//        jarArchiver.setUpdateMode( false );
+//        jarArchiver.addDirectory( explodedJarDir );
+//        jarArchiver.setDestFile( jarFile );
+//        File manifestFile = new File(explodedJarDir, "META-INF/MANIFEST.MF");
+//        if (manifestFile.exists()) {
+//            jarArchiver.setManifest(manifestFile);
+//        }
         //jnlp (1.6.0_u14) doesn't like empty jar (with nothing except META-INF)
         File[] children = explodedJarDir.listFiles();
         if ( children.length == 0 || (children.length == 1 && "META-INF".equals(children[0].getName().toUpperCase())) ) {
             FileUtils.fileWrite(new File(explodedJarDir, "__no_empty.txt").getAbsolutePath(), "fake : no empty file for jnlp");
         }
-        jarArchiver.setIndex(true);
-        jarArchiver.createArchive();
+//        jarArchiver.setIndex(true);
+//        jarArchiver.createArchive();
+        
+        JarOutputStream jos = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(jarFile)));
+        if (!compress) {
+            jos.setLevel(JarOutputStream.STORED);
+        }
+        try {
+            addToJar(jos, explodedJarDir, explodedJarDir.getCanonicalPath());
+        } finally {
+            jos.close();
+        }
     }
 
-
+    private static void addToJar(JarOutputStream jos, File dir, String basedir) throws Exception {
+        for(File f : dir.listFiles()) {
+            if (f.isDirectory()) {
+                addToJar(jos, f, basedir);
+            } else {
+                String entryName = f.getCanonicalPath().substring(basedir.length()+1).replace("\\", "/");
+                JarEntry entry = new JarEntry(entryName);
+                entry.setTime(f.lastModified());
+                entry.setSize(f.length());
+                jos.putNextEntry(entry);
+                BufferedInputStream bis = new BufferedInputStream(new FileInputStream(f));
+                try {
+                    IOUtil.copy(bis, jos);
+                } finally {
+                    IOUtil.close(bis);
+                    jos.closeEntry();
+                }
+            }
+        }
+    }
+    
+    public static void createIndex(File jar, final Log log) throws Exception {
+        Commandline commandLine = new Commandline();
+        commandLine.setExecutable( findJavaExec("jar") );
+        commandLine.addArguments(new String[]{"i", jar.getCanonicalPath()});
+//        commandLine.addArguments(Iterables.toArray(Iterables.transform(jars, new Function<File, String>(){
+//            public String apply(File arg0) {
+//                try {
+//                    return arg0.getCanonicalPath();
+//                } catch (IOException e) {
+//                    throw new RuntimeException(e);
+//                }
+//            }
+//        }), String.class));
+        exec(commandLine, log);
+    }
+    
     public static File pack(File jar, String[] options, final Log log) throws Exception {
 //        Packer packer = Pack200.newPacker();
 
@@ -218,7 +295,7 @@ public class JarUtil {
         File jhome = new File(System.getProperty("java.home"));
         File f = findJavaExec(jhome, name);
         if (!f.exists() && jhome.getName().contains("jre")) {
-            f = new File(jhome.getParentFile(), "bin/" + name);
+            f = findJavaExec(jhome.getParentFile(), name);
         }
         return f.getCanonicalPath();
     }
@@ -231,7 +308,12 @@ public class JarUtil {
         return f;
     }
 
+    //TODO use commons-exec instead of plexus
     private static void exec(Commandline commandLine, final Log log) throws Exception {
+        if ("true".equalsIgnoreCase(System.getProperty("displayCmd"))) {
+            log.info("cmd :" + Joiner.on(" ").join(commandLine.getCommandline()));
+        }
+                
         StreamConsumer stdout = new StreamConsumer() {
             public void consumeLine( String line ) {
                 log.info( line );
@@ -251,7 +333,7 @@ public class JarUtil {
         log.debug(commandLine.toString());
         int pid = CommandLineUtils.executeCommandLine(commandLine, stdout, sterr);
         while(CommandLineUtils.isAlive(pid)) {
-            Thread.sleep(1000);
+            Thread.sleep(500);
         }
     }
 }

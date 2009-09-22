@@ -5,8 +5,13 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.util.Collection;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Properties;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DefaultArtifact;
@@ -17,11 +22,15 @@ import org.apache.maven.artifact.resolver.ArtifactResolver;
 import org.apache.maven.artifact.versioning.VersionRange;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.Velocity;
-import org.codehaus.plexus.archiver.manager.ArchiverManager;
 import org.codehaus.plexus.util.FileUtils;
+
+import com.google.common.base.Function;
+import com.google.common.base.Predicate;
+import com.google.common.collect.Collections2;
 
 /**
  * generate jnlp (from template), rename, sign, pack jar
@@ -97,6 +106,13 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     private static boolean versionEnabled = false;     //TODO support versionEnable = false
 
     /**
+     * Size of the Thread Pool use to process jar (unsign, sign, packe,...) (default is nb of processor)
+     *
+     * @parameter expression="${jws.nbprocessor}" 
+     */
+    private int nbProcessor = Runtime.getRuntime().availableProcessors();
+    
+    /**
      * Enable verbose
      *
      * @parameter expression="${verbose}" default-value="false"
@@ -145,14 +161,6 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      */
     protected ArtifactRepository localRepo;
 
-
-    /**
-     * To look up Archiver/UnArchiver implementations
-     *
-     * @parameter expression="${component.org.codehaus.plexus.archiver.manager.ArchiverManager}"
-     * @required
-     */
-    protected ArchiverManager archiverManager;
 
 //    /**
 //     * The artifact collector to use.
@@ -242,6 +250,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     }
 
     private static HashSet<Artifact> _generatedJars = new HashSet<Artifact>();
+    private static HashMap<String, JarMerger> _mergedJars = new HashMap<String, JarMerger>();
 
     public Collection<Artifact> findGenerated() throws Exception {
         //System.out.println("size of _generatedJars when requested : " + _generatedJars.size());
@@ -273,6 +282,18 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         return context;
     }
 
+    //TODO check if classifier is not already created (cache and warn)
+    public JarMerger newJarMerger(String classifier) throws Exception {
+        JarMerger back = _mergedJars.get(classifier);
+        if (back == null) {
+            Artifact result = artifactFactory.createArtifactWithClassifier(project.getGroupId(), project.getArtifactId(), project.getVersion(), "jar", classifier);
+            back = new JarMerger(result, getLog());
+            _mergedJars.put(classifier, back);
+        } else {
+            getLog().warn("reuse already define jarMerger for classifier '"+ classifier +"'");
+        }
+        return back;
+    }
 
     public Collection<Artifact> findDependencies() throws Exception {
         return findDependencies(project.getArtifact());
@@ -286,9 +307,6 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     public Collection<Artifact> findDependencies(Artifact template) throws Exception {
         return _depFinder.find(template);
     }
-
-    class DependenciesTools {
-     }
 
     @SuppressWarnings("unchecked")
     private VelocityContext addProperties(VelocityContext context, Properties p) throws Exception {
@@ -348,6 +366,33 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         _jars = new HashSet<Artifact>();
     }
 
+    private static boolean isSnapshot(Artifact artifact) {
+        return artifact.getVersion().toUpperCase().endsWith("-SNAPSHOT");
+    }
+
+    private static String findFilename(Artifact artifact, boolean withVersion) {
+        StringBuilder back = new StringBuilder();
+        back.append(artifact.getArtifactId());
+        if (versionEnabled) {
+            if (artifact.hasClassifier()) {
+                back.append('-').append(artifact.getClassifier());
+            }
+            if (isSnapshot(artifact)) {
+                back.append('-').append(artifact.getVersion());
+            }
+            if (withVersion && !isSnapshot(artifact)) {
+                back.append("__V").append(artifact.getVersion());
+            }
+        } else {
+            back.append('-').append(artifact.getVersion());
+            if (artifact.hasClassifier()) {
+                back.append('-').append(artifact.getClassifier());
+            }
+        }
+        back.append('.').append(artifact.getType());
+        return back.toString();
+    }
+    
     // see http://java.sun.com/j2se/1.5.0/docs/guide/deployment/deployment-guide/pack200.html
     // see http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5078608
     //    Step 1:  Repack the file to normalize the jar, repacking calls the packer and unpacks the file in one step.
@@ -380,77 +425,90 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     //
     //    % jarsigner -verify HelloT1.jar
     //    jar verified.
-    private void processJars(File outputDir) throws Exception {
-        JarSigner signer = new JarSigner(sign, JarUtil.createTempDir(), getLog(), verbose);
+    private void processJars(final File outputDir) throws Exception {
+        final JarSigner signer = new JarSigner(sign, JarUtil.createTempDir(), getLog(), verbose);
+        Collection<Artifact> jars = Collections2.filter(_jars, new Predicate<Artifact>(){
+            public boolean apply(Artifact arg0) {
+                return arg0 != null && arg0.getFile() != null && arg0.getFile().exists();
+            }
+        });
+        
+        getLog().info(" - - thread pool size : " + nbProcessor);
+        final ExecutorService exec = Executors.newFixedThreadPool(nbProcessor);
+        Iterable<Future<ProcessJarResult>> rjars = exec.invokeAll(Collections2.transform(jars, new Function<Artifact, Callable<ProcessJarResult>>(){
+            public Callable<ProcessJarResult> apply(final Artifact arg0) {
+                return new Callable<ProcessJarResult>() {
+                    public ProcessJarResult call() throws Exception {
+                        return processJar(arg0, outputDir, getLog(), signer);                    
+                    }
+                };
+            }
+        }));
+        
+        getLog().debug(" - - waiting end of jar processing...");
         long totalSizeJar = 0;
         long totalSizePacked = 0;
-        for(Artifact artifact : _jars) {
-            if (artifact == null) {
-                continue;
+        long nbFile = 0;
+        for(Future<ProcessJarResult> rjar : rjars) {
+            ProcessJarResult result = rjar.get();
+            nbFile++;
+            if (result.jar != null) {
+                totalSizeJar += result.jar.length();
             }
-            File in = artifact.getFile();
-            File dest = new File(outputDir, findFilename(artifact, true));
-            getLog().debug(" - - unsign :" + in + " to " + dest);
-            JarUtil.rejar(in, dest, archiverManager, true, true);
-
-            if (packEnabled) {
-                getLog().debug(" - - repack : " + dest);
-                JarUtil.repack(dest, packOptions, getLog());
+            if (result.packed != null) {
+                totalSizePacked += result.packed.length();
             }
-
-            getLog().debug(" - - sign  : " + dest);
-            signer.sign(dest, dest);
-
-            //signer.verify(out);
-            if (packEnabled) {
-                getLog().debug(" - - pack :" + dest);
-                File tmp3 = new File(outputDir, "tmp3.jar");
-                try {
-                    File packed = JarUtil.pack(dest, packOptions, getLog());
-                    totalSizePacked += packed.length();
-                    if (packVerifySignature) {
-                        getLog().debug(" - - verify packed");
-                        JarUtil.unpack(dest, tmp3, getLog());
-                        JarUtil.verifySignature(tmp3, getLog());
-                    }
-//                    long sizeBefore = dest.length();
-//                    JarUtil.rejar(dest, dest, archiverManager, true, false);
-//                    System.out.println("size before rejar : "+ sizeBefore + " - "+ dest.length() + " = " + (sizeBefore - dest.length()));
-                } finally {
-                    tmp3.delete();
-                }
-            }
-            totalSizeJar += dest.length();
-            getLog().debug("end generation of " + dest);
         }
         getLog().info(" - - total size of .jar         : " + totalSizeJar / 1024 + " KB");
         getLog().info(" - - total size of .jar.pack.gz : " + totalSizePacked / 1024 + " KB ~ " + (totalSizePacked*100/totalSizeJar) + "%");
+        getLog().info(" - - total number of jar        : " +  nbFile);
+    }
+    
+    public static class ProcessJarResult {
+        public File packed;
+        public File jar;
     }
 
-    private static boolean isSnapshot(Artifact artifact) {
-        return artifact.getVersion().toUpperCase().endsWith("-SNAPSHOT");
-    }
+    public ProcessJarResult processJar(Artifact artifact, File outputDir, Log logger, JarSigner signer) throws Exception {
+        ProcessJarResult back = new ProcessJarResult();
+        File in = artifact.getFile();
+        File dest = new File(outputDir, findFilename(artifact, true));
+        logger.debug(" - - unsign :" + in + " to " + dest);
+        JarUtil.rejar(in, dest, true, true);
 
-    private static String findFilename(Artifact artifact, boolean withVersion) {
-        StringBuilder back = new StringBuilder();
-        back.append(artifact.getArtifactId());
-        if (versionEnabled) {
-            if (artifact.hasClassifier()) {
-                back.append('-').append(artifact.getClassifier());
-            }
-            if (isSnapshot(artifact)) {
-                back.append('-').append(artifact.getVersion());
-            }
-            if (withVersion && !isSnapshot(artifact)) {
-                back.append("__V").append(artifact.getVersion());
-            }
-        } else {
-            back.append('-').append(artifact.getVersion());
-            if (artifact.hasClassifier()) {
-                back.append('-').append(artifact.getClassifier());
+        getLog().debug(" - - create INDEX.LIST");
+        JarUtil.createIndex(dest, getLog());
+        
+
+        if (packEnabled) {
+            logger.debug(" - - repack : " + dest);
+            JarUtil.repack(dest, packOptions, logger);
+        }
+
+        getLog().debug(" - - sign  : " + dest);
+        signer.sign(dest, dest);
+        back.jar = dest;
+        
+        //signer.verify(out);
+        if (packEnabled) {
+            logger.debug(" - - pack :" + dest);
+            File tmp3 = new File(outputDir, dest.getName()+"-tmp3.jar");
+            try {
+                File packed = JarUtil.pack(dest, packOptions, logger);
+                if (packVerifySignature) {
+                    getLog().debug(" - - verify packed");
+                    JarUtil.unpack(dest, tmp3, logger);
+                    JarUtil.verifySignature(tmp3, logger);
+                }
+                back.packed = packed;
+//                    long sizeBefore = dest.length();
+//                    JarUtil.rejar(dest, dest, archiverManager, true, false);
+//                    System.out.println("size before rejar : "+ sizeBefore + " - "+ dest.length() + " = " + (sizeBefore - dest.length()));
+            } finally {
+                tmp3.delete();
             }
         }
-        back.append('.').append(artifact.getType());
-        return back.toString();
+        logger.debug("end generation of " + dest);
+        return back;
     }
 }

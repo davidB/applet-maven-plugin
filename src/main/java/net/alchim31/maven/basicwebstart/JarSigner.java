@@ -50,33 +50,35 @@ public class JarSigner {
      * generate Keystore if cfg.generateKeystore == true
      */
     private static void createKeyStore(SignConfig cfg, File workDirectory, Log log, boolean verbose) throws Exception {
-        if (cfg.keystore == null || cfg.generateKeystore) {
-            if (cfg.keystore == null) {
-                cfg.keystore = new File(workDirectory, "tmp.jks");
+        synchronized(cfg) {
+            if (cfg.keystore == null || cfg.generateKeystore) {
+                if (cfg.keystore == null) {
+                    cfg.keystore = new File(workDirectory, "tmp.jks");
+                }
+                if (cfg.keystore.exists()) {
+                    FileUtils.forceDelete(cfg.keystore);
+                }
+                GenkeyMojo genKeystore = new GenkeyMojo();
+                genKeystore.setAlias(cfg.alias);
+                genKeystore.setDname(cfg.getDname());
+                genKeystore.setKeyalg(cfg.keyalg);
+                genKeystore.setKeypass(cfg.keypass);
+                genKeystore.setKeysize(cfg.keysize);
+                genKeystore.setKeystore(cfg.keystore.getAbsolutePath());
+                genKeystore.setSigalg(cfg.sigalg);
+                genKeystore.setStorepass(cfg.storepass);
+                genKeystore.setStoretype(cfg.storetype);
+                genKeystore.setValidity(cfg.validity);
+                genKeystore.setVerbose(verbose);
+                genKeystore.setWorkingDir(workDirectory);
+                genKeystore.setLog(log);
+                genKeystore.execute();
+    
+                cfg.generateKeystore = false;
             }
-            if (cfg.keystore.exists()) {
-                FileUtils.forceDelete(cfg.keystore);
+            if ((cfg.keystore != null) && !cfg.keystore.exists()){
+                throw new FileNotFoundException("keystore file '" + cfg.keystore + "'");
             }
-            GenkeyMojo genKeystore = new GenkeyMojo();
-            genKeystore.setAlias(cfg.alias);
-            genKeystore.setDname(cfg.getDname());
-            genKeystore.setKeyalg(cfg.keyalg);
-            genKeystore.setKeypass(cfg.keypass);
-            genKeystore.setKeysize(cfg.keysize);
-            genKeystore.setKeystore(cfg.keystore.getAbsolutePath());
-            genKeystore.setSigalg(cfg.sigalg);
-            genKeystore.setStorepass(cfg.storepass);
-            genKeystore.setStoretype(cfg.storetype);
-            genKeystore.setValidity(cfg.validity);
-            genKeystore.setVerbose(verbose);
-            genKeystore.setWorkingDir(workDirectory);
-            genKeystore.setLog(log);
-            genKeystore.execute();
-
-            cfg.generateKeystore = false;
-        }
-        if ((cfg.keystore != null) && !cfg.keystore.exists()){
-            throw new FileNotFoundException("keystore file '" + cfg.keystore + "'");
         }
     }
 
@@ -84,12 +86,28 @@ public class JarSigner {
     // Object
     ////////////////////////////////////////////////////////////////////////////
 
-    private JarSignMojo _mojo = null;
+    private ThreadLocal<JarSignMojo> _mojos = new ThreadLocal<JarSignMojo>() {
+        @Override protected JarSignMojo initialValue() {
+            try {
+                if (_cfg != null) {
+                    return newJarSignerMojo(_cfg, _workDirectory, _log, _verbose);
+                }
+                return null;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    };
+    private SignConfig _cfg;
+    private File _workDirectory;
+    private Log _log;
+    private boolean _verbose;
 
     public JarSigner(SignConfig cfg, File workDirectory, Log log, boolean verbose) throws Exception {
-        if (cfg != null) {
-            _mojo = newJarSignerMojo(cfg, workDirectory, log, verbose);
-        }
+        _cfg = cfg;
+        _workDirectory = workDirectory;
+        _log = log;
+        _verbose = verbose;
     }
 
     /**
@@ -103,12 +121,13 @@ public class JarSigner {
      * @throws java.lang.Exception
      */
     public void sign(File jarIn, File jarOut) throws Exception {
-        if (_mojo != null) {
-            _mojo.setJarPath(jarIn);
+        JarSignMojo mojo = _mojos.get();
+        if (mojo != null) {
+            mojo.setJarPath(jarIn);
             if (!jarIn.getCanonicalPath().equals(jarOut.getCanonicalPath())) {
-                _mojo.setSignedJar(jarOut);
+                mojo.setSignedJar(jarOut);
             }
-            _mojo.execute();
+            mojo.execute();
         } else if (!jarIn.getCanonicalPath().equals(jarOut.getCanonicalPath())) {
             FileUtils.copyFile(jarIn, jarOut);
         }
