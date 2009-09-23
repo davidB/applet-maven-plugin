@@ -104,6 +104,12 @@
       <version>${mercury.version}</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.maven.mercury</groupId>
+      <artifactId>mercury-plexus</artifactId>
+      <version>${mercury.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
