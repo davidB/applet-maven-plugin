@@ -1,4 +1,4 @@
-package net.alchim31.maven.basicwebstart;
+package sandbox;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -6,6 +6,8 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
+
+import net.alchim31.maven.basicwebstart.DependencyFinder;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;

@@ -65,7 +65,7 @@
       <groupId>com.google.collections</groupId>
       <artifactId>google-collections</artifactId>
       <version>1.0-rc2</version>
-    </dependency>     
+    </dependency>
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
@@ -88,6 +88,12 @@
       <groupId>org.apache.maven.mercury</groupId>
       <artifactId>mercury-repo-virtual</artifactId>
       <version>${mercury.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.plexus</groupId>
+      <artifactId>plexus-container-default</artifactId>
+      <version>1.0-beta-3.0.6</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
