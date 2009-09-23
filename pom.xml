@@ -94,6 +94,11 @@
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-container-default</artifactId>
       <version>1.0-beta-3.0.6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.mercury</groupId>
+      <artifactId>mercury-plexus</artifactId>
+      <version>${mercury.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

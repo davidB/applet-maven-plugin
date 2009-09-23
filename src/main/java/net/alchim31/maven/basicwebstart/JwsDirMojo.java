@@ -460,7 +460,9 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             }
         }
         getLog().info(" - - total size of .jar         : " + totalSizeJar / 1024 + " KB");
-        getLog().info(" - - total size of .jar.pack.gz : " + totalSizePacked / 1024 + " KB ~ " + (totalSizePacked*100/totalSizeJar) + "%");
+        if ((totalSizeJar > 0) &&  (totalSizePacked > 0)) {
+            getLog().info(" - - total size of .jar.pack.gz : " + totalSizePacked / 1024 + " KB ~ " + (totalSizePacked*100/totalSizeJar) + "%");
+        }
         getLog().info(" - - total number of jar        : " +  nbFile);
     }
     
