@@ -200,6 +200,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
 
     private DependencyFinder _depFinder = null;
 
+    private JarUtil _ju = null;
     public void execute() throws MojoExecutionException {
         try {
             getLog().info("start on : " + inputDirectory);
@@ -212,6 +213,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             }
 
             getLog().info("step 0 : initialisation");
+            _ju = new JarUtil(new File(project.getBuild().getDirectory()), getLog());
             initJars(); //reset jarList before template fill it
             _depFinder = new DependencyFinderImpl0(project);
 
@@ -264,6 +266,10 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             processJars(outputDirectory);
         } catch (Exception e ) {
             throw new MojoExecutionException("Error generation jws dir", e );
+        } finally {
+            if (_ju != null) {
+                _ju.clean();
+            }
         }
     }
 
@@ -305,7 +311,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         JarMerger back = _mergedJars.get(classifier);
         if (back == null) {
             Artifact result = artifactFactory.createArtifactWithClassifier(project.getGroupId(), project.getArtifactId(), project.getVersion(), "jar", classifier);
-            back = new JarMerger(result, getLog());
+            back = new JarMerger(result, _ju, getLog());
             _mergedJars.put(classifier, back);
         } else {
             getLog().warn("reuse already define jarMerger for classifier '"+ classifier +"'");
@@ -481,7 +487,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     //    % jarsigner -verify HelloT1.jar
     //    jar verified.
     private void processJars(final File outputDir) throws Exception {
-        final JarSigner signer = new JarSigner(sign, JarUtil.createTempDir(), getLog(), verbose);
+        final JarSigner signer = new JarSigner(sign, _ju.createTempDir(), getLog(), verbose);
         List<Artifact> jars = Lists.newArrayList(Collections2.filter(_jars, new Predicate<Artifact>(){
             public boolean apply(Artifact arg0) {
                 return arg0 != null && arg0.getFile() != null && arg0.getFile().exists();
@@ -539,16 +545,16 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             in.renameTo(dest);
             artifact.setFile(dest);
         } else {
-            JarUtil.rejar(in, dest, true, true, logger);
+            _ju.rejar(in, dest, true, true);
         }
 
 //        getLog().debug(" - - create INDEX.LIST");
-//        JarUtil.createIndex(dest, getLog());
+//        _ju.createIndex(dest, getLog());
         
 
         if (packEnabled) {
             logger.debug(" - - repack : " + dest);
-            JarUtil.repack(dest, packOptions, logger);
+            _ju.repack(dest, packOptions);
         }
 
         getLog().debug(" - - sign  : " + dest);
@@ -560,15 +566,15 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             logger.debug(" - - pack :" + dest);
             File tmp3 = new File(outputDir, dest.getName()+"-tmp3.jar");
             try {
-                File packed = JarUtil.pack(dest, packOptions, logger);
+                File packed = _ju.pack(dest, packOptions, logger);
                 if (packVerifySignature) {
                     getLog().debug(" - - verify packed");
-                    JarUtil.unpack(dest, tmp3, logger);
-                    JarUtil.verifySignature(tmp3, logger);
+                    _ju.unpack(dest, tmp3);
+                    _ju.verifySignature(tmp3);
                 }
                 back.packed = packed;
 //                    long sizeBefore = dest.length();
-//                    JarUtil.rejar(dest, dest, archiverManager, true, false);
+//                    _ju.rejar(dest, dest, archiverManager, true, false);
 //                    System.out.println("size before rejar : "+ sizeBefore + " - "+ dest.length() + " = " + (sizeBefore - dest.length()));
             } finally {
                 tmp3.delete();

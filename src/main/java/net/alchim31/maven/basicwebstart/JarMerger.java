@@ -11,11 +11,13 @@ public class JarMerger {
     private Artifact _result;
     private HashSet<Artifact> _jars = new HashSet<Artifact>();
     private Log _logger;
+    private JarUtil _ju;
     
-    public JarMerger(Artifact result, Log logger) {
+    public JarMerger(Artifact result, JarUtil ju, Log logger) {
         _result = result;
         _logger = logger;
         _result.setFile(null);
+        _ju = ju;
     }
 
     public void addJar(Artifact artifact) throws Exception {
@@ -29,19 +31,19 @@ public class JarMerger {
 
     public Artifact getMergedJar() throws Exception {
         if (_result.getFile() == null) {
-            File mergedJar = File.createTempFile("jarmerger-", ".jar", JarUtil.createTempDir());
+            File mergedJar = File.createTempFile("jarmerger-", ".jar", _ju.createTempDir());
 
             File mergedJarDir = new File(mergedJar.getAbsolutePath() + ".dir");
             mergedJarDir.mkdirs();
             _logger.debug("create mergedDir : " + mergedJarDir);
             for (Artifact artifact : _jars) {
-                JarUtil.unjar(artifact.getFile(), mergedJarDir);
+                _ju.unjar(artifact.getFile(), mergedJarDir);
             }
             new File(mergedJarDir, "META-INF/MANIFEST.MF").delete();
             new File(mergedJarDir, "META-INF/INDEX.LIST").delete();
             JarUtil.unsign(mergedJarDir);
             //TODO add a file that list every artifact merged ??
-            JarUtil.jar(mergedJarDir, mergedJar, true, _logger);
+            _ju.jar(mergedJarDir, mergedJar, true);
             _result.setGroupId(GROUP_ID);
             _result.setFile(mergedJar);
         }
