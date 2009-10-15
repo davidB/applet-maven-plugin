@@ -4,10 +4,15 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -19,11 +24,15 @@ import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.artifact.metadata.ArtifactMetadataSource;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.artifact.resolver.ArtifactResolver;
+import org.apache.maven.artifact.resolver.filter.AndArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.ArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.ScopeArtifactFilter;
 import org.apache.maven.artifact.versioning.VersionRange;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.MavenProjectBuilder;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.Velocity;
 import org.codehaus.plexus.util.FileUtils;
@@ -31,6 +40,7 @@ import org.codehaus.plexus.util.FileUtils;
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
+import com.google.common.collect.Lists;
 
 /**
  * generate jnlp (from template), rename, sign, pack jar
@@ -161,7 +171,15 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      */
     protected ArtifactRepository localRepo;
 
-
+    /**
+     * Artifact factory, needed to download source jars.
+     *
+     * @component
+     * @required
+     * @readonly
+     */
+    protected MavenProjectBuilder mavenProjectBuilder;
+    
 //    /**
 //     * The artifact collector to use.
 //     *
@@ -295,6 +313,35 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         return back;
     }
 
+    @SuppressWarnings("unchecked")
+    public Collection<Artifact> findArtifact(String groupId, String artifactId, String version, String classifier, boolean withDependencies) throws Exception {
+        Set<Artifact> back = new HashSet<Artifact>();
+        LinkedList<?> remoteRepos = new LinkedList<Object>();
+        Artifact artifact = artifactFactory.createArtifactWithClassifier(groupId, artifactId, version, "jar", classifier);
+        resolver.resolve(artifact, remoteRepos, localRepo);
+        back.add(artifact);
+        if (withDependencies) {
+            //TODO refactor to reuse findDependencies
+            Artifact pomArtifact = artifactFactory.createArtifact(artifact.getGroupId(), artifact.getArtifactId(), artifact.getVersion(), "", "pom");
+            MavenProject pomProject = mavenProjectBuilder.buildFromRepository(pomArtifact, remoteRepos, localRepo);
+            //protected Set<Artifact> resolveDependencyArtifacts(MavenProject theProject) throws Exception {
+            AndArtifactFilter filter = new AndArtifactFilter();
+            filter.add(new ScopeArtifactFilter(Artifact.SCOPE_TEST));
+            filter.add(new ArtifactFilter(){
+                public boolean include(Artifact artifact) {
+                    return !artifact.isOptional();
+                }
+            });
+            //TODO follow the dependenciesManagement and override rules
+            Set<Artifact> deps = pomProject.createArtifacts(artifactFactory, Artifact.SCOPE_RUNTIME, filter);
+            for (Artifact dep : deps) {
+                resolver.resolve(dep, remoteRepos, localRepo);
+            }
+            back.addAll(deps);
+        }
+        return back;
+    }
+
     public Collection<Artifact> findDependencies() throws Exception {
         return findDependencies(project.getArtifact());
     }
@@ -348,20 +395,28 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
 //        return back;
 //    }
 
-    public static String addJar(Artifact artifact) throws Exception {
-        _jars.add(artifact);
-        StringBuilder back = new StringBuilder();
-        back.append("href=\"")
-            .append(findFilename(artifact, false))
-            .append('"')
-            ;
-        if (!isSnapshot(artifact)) {
-            back.append(" version=\"").append(artifact.getVersion()).append('"');
-        }
-        //back.append(" size=\"").append(artifact.getFile().length()).append('"');
-        return back.toString();
+    // keep for backward compatibility
+    public static CharSequence addJar(Artifact artifact) throws Exception {
+        return addJar(artifact, true);
     }
 
+    public static CharSequence addJar(Artifact artifact, boolean outputAsJnlpAttributes) throws Exception {
+        _jars.add(artifact);
+        if (outputAsJnlpAttributes) {
+            StringBuilder back = new StringBuilder();
+            back.append("href=\"")
+                .append(findFilename(artifact, false))
+                .append('"')
+                ;
+            if (!isSnapshot(artifact)) {
+                back.append(" version=\"").append(artifact.getVersion()).append('"');
+            }
+            //back.append(" size=\"").append(artifact.getFile().length()).append('"');
+            return back;
+        }
+        return findFilename(artifact, false);
+    }
+    
     private void initJars() throws Exception {
         _jars = new HashSet<Artifact>();
     }
@@ -427,12 +482,16 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     //    jar verified.
     private void processJars(final File outputDir) throws Exception {
         final JarSigner signer = new JarSigner(sign, JarUtil.createTempDir(), getLog(), verbose);
-        Collection<Artifact> jars = Collections2.filter(_jars, new Predicate<Artifact>(){
+        List<Artifact> jars = Lists.newArrayList(Collections2.filter(_jars, new Predicate<Artifact>(){
             public boolean apply(Artifact arg0) {
                 return arg0 != null && arg0.getFile() != null && arg0.getFile().exists();
             }
+        }));
+        Collections.sort(jars, new Comparator<Artifact>(){
+            public int compare(Artifact o1, Artifact o2) {
+                return o1.getArtifactId().compareToIgnoreCase(o2.getArtifactId());
+            }
         });
-        
         getLog().info(" - - thread pool size : " + nbProcessor);
         final ExecutorService exec = Executors.newFixedThreadPool(nbProcessor);
         Iterable<Future<ProcessJarResult>> rjars = exec.invokeAll(Collections2.transform(jars, new Function<Artifact, Callable<ProcessJarResult>>(){
@@ -476,10 +535,15 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         File in = artifact.getFile();
         File dest = new File(outputDir, findFilename(artifact, true));
         logger.debug(" - - unsign :" + in + " to " + dest);
-        JarUtil.rejar(in, dest, true, true);
+        if (JarMerger.GROUP_ID.equals(artifact.getGroupId())) {
+            in.renameTo(dest);
+            artifact.setFile(dest);
+        } else {
+            JarUtil.rejar(in, dest, true, true, logger);
+        }
 
-        getLog().debug(" - - create INDEX.LIST");
-        JarUtil.createIndex(dest, getLog());
+//        getLog().debug(" - - create INDEX.LIST");
+//        JarUtil.createIndex(dest, getLog());
         
 
         if (packEnabled) {

@@ -7,6 +7,7 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.logging.Log;
 
 public class JarMerger {
+    public static String GROUP_ID = "merge";
     private Artifact _result;
     private HashSet<Artifact> _jars = new HashSet<Artifact>();
     private Log _logger;
@@ -28,18 +29,20 @@ public class JarMerger {
 
     public Artifact getMergedJar() throws Exception {
         if (_result.getFile() == null) {
-            File mergedJar = File.createTempFile("jarmerger-", ".jar");
+            File mergedJar = File.createTempFile("jarmerger-", ".jar", JarUtil.createTempDir());
 
             File mergedJarDir = new File(mergedJar.getAbsolutePath() + ".dir");
             mergedJarDir.mkdirs();
-            _logger.info("create mergedDir : " + mergedJarDir);
+            _logger.debug("create mergedDir : " + mergedJarDir);
             for (Artifact artifact : _jars) {
                 JarUtil.unjar(artifact.getFile(), mergedJarDir);
             }
             new File(mergedJarDir, "META-INF/MANIFEST.MF").delete();
             new File(mergedJarDir, "META-INF/INDEX.LIST").delete();
+            JarUtil.unsign(mergedJarDir);
             //TODO add a file that list every artifact merged ??
-            JarUtil.jar(mergedJarDir, mergedJar, true);
+            JarUtil.jar(mergedJarDir, mergedJar, true, _logger);
+            _result.setGroupId(GROUP_ID);
             _result.setFile(mergedJar);
         }
         return _result;
