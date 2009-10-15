@@ -15,26 +15,30 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
+import java.util.zip.Adler32;
+import java.util.zip.CheckedOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
-import org.apache.maven.artifact.Artifact;
+import org.codehaus.plexus.util.StringUtils;
+import org.apache.commons.exec.CommandLine;
+import org.apache.commons.exec.DefaultExecutor;
+import org.apache.commons.exec.Executor;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
-import org.codehaus.plexus.util.cli.Arg;
 import org.codehaus.plexus.util.cli.CommandLineUtils;
 import org.codehaus.plexus.util.cli.Commandline;
 import org.codehaus.plexus.util.cli.StreamConsumer;
 
-import com.google.common.base.Function;
 import com.google.common.base.Joiner;
-import com.google.common.collect.Collections2;
-import com.google.common.collect.Iterables;
 
 /**
  * Note 2009-09-21 : no longer use ArchiveManager, because it failed when running in 4 thread in //, when it execute external command 'sh -c ls -1lnaR ...'
@@ -100,27 +104,35 @@ public class JarUtil {
             if (entry.isDirectory()) {
                 f.mkdirs();
             } else {
-                f.getParentFile().mkdirs();
+                File parent = f.getParentFile();
+                if (!parent.exists() && !parent.mkdirs() || !parent.isDirectory()) {
+                    throw new IOException("can't create directory :" + parent);
+                }
                 InputStream in = jfile.getInputStream(entry);
                 OutputStream os = new FileOutputStream(f);
                 try {
                     IOUtil.copy(in, os);
+                    os.flush();
                 } finally {
-                    IOUtil.close(os);
                     IOUtil.close(in);
+                    IOUtil.close(os);
                 }
+            }
+            long lastModified = entry.getTime();
+            if (lastModified != -1) {
+                f.setLastModified(lastModified);
             }
         }
         return outdir;
     }
     
     //TODO optimisation : avoid exploding files on FS (memory pipeline)
-    public static void rejar(File jarIn, File jarOut, boolean compress, boolean unsign) throws Exception {
+    public static void rejar(File jarIn, File jarOut, boolean compress, boolean unsign, Log log) throws Exception {
         File explodedJarDir = unjar(jarIn);
         if (unsign) {
             unsign(explodedJarDir);
         }
-        jar(explodedJarDir, jarOut, compress);
+        jar(explodedJarDir, jarOut, compress, log);
         FileUtils.deleteDirectory(explodedJarDir);
     }
     
@@ -146,7 +158,8 @@ public class JarUtil {
         }
     }
 
-    public static void jar(File explodedJarDir, File jarFile, boolean compress) throws Exception {
+    public static void jar(File explodedJarDir, File jarFile, boolean compress, Log log) throws Exception {
+        try {
 //        JarArchiver jarArchiver = (JarArchiver) archiverManager.getArchiver( "jar" );
 //        jarArchiver.setCompress( compress );
 //        jarArchiver.setUpdateMode( false );
@@ -157,37 +170,83 @@ public class JarUtil {
 //            jarArchiver.setManifest(manifestFile);
 //        }
         //jnlp (1.6.0_u14) doesn't like empty jar (with nothing except META-INF)
+        File indexList = new File( explodedJarDir, "META-INF/INDEX.LIST" );
+        if (indexList.exists()) {
+            indexList.delete();
+        }
+        File manifestFile = new File( explodedJarDir, JarFile.MANIFEST_NAME );
+        if (!manifestFile.exists()) {
+            FileOutputStream os = new FileOutputStream(manifestFile);
+            try {
+                new Manifest().write(os);
+            } finally {
+                IOUtil.close(os);
+            }
+        }
         File[] children = explodedJarDir.listFiles();
         if ( children.length == 0 || (children.length == 1 && "META-INF".equals(children[0].getName().toUpperCase())) ) {
             FileUtils.fileWrite(new File(explodedJarDir, "__no_empty.txt").getAbsolutePath(), "fake : no empty file for jnlp");
         }
+        //jar cvfm classes.jar mymanifest -C foo/ .
+        CommandLine commandLine = new CommandLine( findJavaExec("jar") );
+        commandLine.addArguments(new String[]{"cf", jarFile.getCanonicalPath(), "-C", explodedJarDir.getCanonicalPath(), "."});
+        exec(commandLine, log);
+
+//        sun.tools.jar.Main jartool = new sun.tools.jar.Main(System.out, System.err, "jar");
+//        if (!jartool.run(new String[]{"cMf", jarFile.getCanonicalPath(), "-C", explodedJarDir.getCanonicalPath(), "."})) {
+//            throw new Exception("failed to execute sun.tools.jar.Main.run(...)"); 
+//        }
+
+        
 //        jarArchiver.setIndex(true);
 //        jarArchiver.createArchive();
         
-        JarOutputStream jos = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(jarFile)));
-        if (!compress) {
-            jos.setLevel(JarOutputStream.STORED);
-        }
-        try {
-            addToJar(jos, explodedJarDir, explodedJarDir.getCanonicalPath());
-        } finally {
-            jos.close();
+//        CheckedOutputStream checksum = new CheckedOutputStream(new FileOutputStream(jarFile), new Adler32());
+//        ZipOutputStream jos = new ZipOutputStream(checksum);
+//        try {
+//            if (!compress) {
+//                jos.setLevel(ZipOutputStream.STORED);
+//            }
+//            addToJar(jos, explodedJarDir, explodedJarDir.getCanonicalPath());
+//        } finally {
+//            jos.finish();
+//            IOUtil.close(jos);
+//        }
+//        System.out.println("checksum: "+checksum.getChecksum().getValue());
+
+//        //simple check
+//        System.out.println("check --> " + jarFile);
+//        JarFile jf = new JarFile(jarFile);
+//        System.out.println("check --> " + jarFile + " : " +jf);
+//        jf.close();
+        } catch (Exception exc) {
+            throw new RuntimeException("failed to jar("+ explodedJarDir +", " + jarFile +", " +compress +")", exc);
         }
     }
 
-    private static void addToJar(JarOutputStream jos, File dir, String basedir) throws Exception {
+    private static void addToJar(ZipOutputStream jos, File dir, String basedir) throws Exception {
         for(File f : dir.listFiles()) {
             if (f.isDirectory()) {
+                String entryName = f.getCanonicalPath().substring(basedir.length()+1).replace("\\", "/");
+                entryName = entryName.endsWith(File.separator) ? entryName : entryName + "/";
+                ZipEntry entry = new ZipEntry(entryName);
+                entry.setTime(f.lastModified());
+                entry.setSize(0);
+                //entry.setMethod(ZipEntry.STORED);
+                jos.putNextEntry(entry);
+                jos.closeEntry();
                 addToJar(jos, f, basedir);
             } else {
                 String entryName = f.getCanonicalPath().substring(basedir.length()+1).replace("\\", "/");
-                JarEntry entry = new JarEntry(entryName);
+                ZipEntry entry = new ZipEntry(entryName);
                 entry.setTime(f.lastModified());
                 entry.setSize(f.length());
+                //entry.setMethod(ZipEntry.STORED);
                 jos.putNextEntry(entry);
-                BufferedInputStream bis = new BufferedInputStream(new FileInputStream(f));
+                BufferedInputStream bis = new BufferedInputStream(new FileInputStream(f), 2048);
                 try {
                     IOUtil.copy(bis, jos);
+                    //jos.flush();
                 } finally {
                     IOUtil.close(bis);
                     jos.closeEntry();
@@ -197,9 +256,8 @@ public class JarUtil {
     }
     
     public static void createIndex(File jar, final Log log) throws Exception {
-        Commandline commandLine = new Commandline();
-        commandLine.setExecutable( findJavaExec("jar") );
-        commandLine.addArguments(new String[]{"i", jar.getCanonicalPath()});
+        CommandLine commandLine = new CommandLine( findJavaExec("jar") );
+        commandLine.addArguments(new String[]{"iv", jar.getCanonicalPath()});
 //        commandLine.addArguments(Iterables.toArray(Iterables.transform(jars, new Function<File, String>(){
 //            public String apply(File arg0) {
 //                try {
@@ -209,7 +267,7 @@ public class JarUtil {
 //                }
 //            }
 //        }), String.class));
-        exec(commandLine, log);
+        exec(commandLine, false, log);
     }
     
     public static File pack(File jar, String[] options, final Log log) throws Exception {
@@ -246,8 +304,7 @@ public class JarUtil {
 //            //IOUtil.close(in);
 //            IOUtil.close(out);
 //        }
-        Commandline commandLine = new Commandline();
-        commandLine.setExecutable(findJavaExec("pack200"));
+        CommandLine commandLine = new CommandLine(findJavaExec("pack200"));
         if (options != null && options.length > 0) {
             commandLine.addArguments(options);
         }
@@ -262,8 +319,7 @@ public class JarUtil {
     }
 
     public static void repack(File jar, String[] options, final Log log) throws Exception {
-        Commandline commandLine = new Commandline();
-        commandLine.setExecutable(findJavaExec("pack200"));
+        CommandLine commandLine = new CommandLine(findJavaExec("pack200"));
         if (options != null && options.length > 0) {
             commandLine.addArguments(options);
         }
@@ -277,27 +333,25 @@ public class JarUtil {
     }
 
     public static void unpack(File pack, File jar, Log log) throws Exception {
-        Commandline commandLine = new Commandline();
-        commandLine.setExecutable(findJavaExec("unpack200"));
+        CommandLine commandLine = new CommandLine(findJavaExec("unpack200"));
         commandLine.addArguments(new String[]{pack.getAbsolutePath(), jar.getAbsolutePath()});
         exec(commandLine, log);
     }
 
     //TODO throws an exception or return a boolean is the verification failed
     public static void verifySignature(File jar, Log log) throws Exception {
-        Commandline commandLine = new Commandline();
-        commandLine.setExecutable( findJavaExec("jarsigner") );
+        CommandLine commandLine = new CommandLine( findJavaExec("jarsigner") );
         commandLine.addArguments(new String[]{"-verify", jar.getAbsolutePath()});
         exec(commandLine, log);
     }
     
-    private static String findJavaExec(String name) throws Exception {
+    private static File findJavaExec(String name) throws Exception {
         File jhome = new File(System.getProperty("java.home"));
         File f = findJavaExec(jhome, name);
         if (!f.exists() && jhome.getName().contains("jre")) {
             f = findJavaExec(jhome.getParentFile(), name);
         }
-        return f.getCanonicalPath();
+        return f;
     }
     
     private static File findJavaExec(File jhome, String name) throws Exception {
@@ -309,31 +363,41 @@ public class JarUtil {
     }
 
     //TODO use commons-exec instead of plexus
-    private static void exec(Commandline commandLine, final Log log) throws Exception {
-        if ("true".equalsIgnoreCase(System.getProperty("displayCmd"))) {
-            log.info("cmd :" + Joiner.on(" ").join(commandLine.getCommandline()));
-        }
-                
-        StreamConsumer stdout = new StreamConsumer() {
-            public void consumeLine( String line ) {
-                log.info( line );
+    private static void exec(CommandLine commandLine, Log log) throws Exception {
+        exec(commandLine, true, log);
+    }
+    
+    private static void exec(CommandLine commandLine, boolean throwFailure, Log log) throws Exception {
+        try {
+//        StreamConsumer stdout = new StreamConsumer() {
+//            public void consumeLine( String line ) {
+//                log.info( line );
+//            }
+//        };
+//        StreamConsumer sterr = new StreamConsumer() {
+//            public void consumeLine( String line ) {
+//                log.info( line );
+//            }
+//        };
+            if ("true".equalsIgnoreCase(System.getProperty("displayCmd"))) {
+                log.info("cmd : " + commandLine.toString());
+            } else if (log.isDebugEnabled()) {
+                log.debug("cmd :"+ commandLine.toString());
             }
-        };
-        StreamConsumer sterr = new StreamConsumer() {
-            public void consumeLine( String line ) {
-                log.info( line );
+            File exec = new File(commandLine.getExecutable());
+            if (!exec.exists()) {
+                String msg = "exec not found : " + exec;
+                log.error(msg);
+                throw new IllegalStateException(msg);
             }
-        };
-        File exec = new File(commandLine.getExecutable());
-        if (!exec.exists()) {
-            String msg = "exec not found : " + exec;
-            log.error(msg);
-            throw new IllegalStateException(msg);
-        }
-        log.debug(commandLine.toString());
-        int pid = CommandLineUtils.executeCommandLine(commandLine, stdout, sterr);
-        while(CommandLineUtils.isAlive(pid)) {
-            Thread.sleep(500);
+            Executor executor = new DefaultExecutor();
+            executor.execute(commandLine);
+        } catch (Exception exc) {
+            if (throwFailure) {
+                throw exc;
+            } else {
+                log.warn(exc);
+            }
         }
     }
 }
