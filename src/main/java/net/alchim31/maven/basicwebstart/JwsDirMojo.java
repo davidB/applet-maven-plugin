@@ -267,7 +267,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         } catch (Exception e ) {
             throw new MojoExecutionException("Error generation jws dir", e );
         } finally {
-            if (_ju != null) {
+            if (_ju != null && !getLog().isDebugEnabled()) {
                 _ju.clean();
             }
         }
