@@ -151,7 +151,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * @required
      * @readonly
      */
-    protected ArtifactFactory artifactFactory;
+    private ArtifactFactory artifactFactory;
 
     /**
      * Used to look up Artifacts in the remote repository.
@@ -160,7 +160,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * @required
      * @readonly
      */
-    protected ArtifactResolver resolver;
+    private ArtifactResolver resolver;
 
     /**
      * Location of the local repository.
@@ -169,7 +169,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * @readonly
      * @required
      */
-    protected ArtifactRepository localRepo;
+    private ArtifactRepository localRepo;
 
     /**
      * Artifact factory, needed to download source jars.
@@ -178,7 +178,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * @required
      * @readonly
      */
-    protected MavenProjectBuilder mavenProjectBuilder;
+    private MavenProjectBuilder mavenProjectBuilder;
     
 //    /**
 //     * The artifact collector to use.

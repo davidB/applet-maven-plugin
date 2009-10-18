@@ -24,8 +24,8 @@ import org.codehaus.plexus.util.IOUtil;
  * Note 2009-09-21 : no longer use ArchiveManager, because it failed when running in 4 thread in //, when it execute external command 'sh -c ls -1lnaR ...'
  * @author dwayne
  */
-public class JarUtil {
-    private final static List<String> EXT_ARRAY = Arrays.asList(new String[]{ "DSA", "RSA", "SF" });
+class JarUtil {
+    private final static List<String> EXT_ARRAY = Arrays.asList("DSA", "RSA", "SF");
     private final static FileFilter _removeSignatureFileFilter = new FileFilter() {
         public boolean accept(File file) {
             String extension = FileUtils.getExtension(file.getAbsolutePath());
@@ -56,7 +56,7 @@ public class JarUtil {
         return dir;
     }
 
-    public File unjar(File jarFile) throws Exception {
+    File unjar(File jarFile) throws Exception {
         File tempDirParent = createTempDir();
 
         // create temp dir
@@ -128,9 +128,9 @@ public class JarUtil {
 //            verboseLog( "no files match " + toString(EXT_ARRAY) + " : nothing to do for file: " + jarFile.getAbsolutePath() );
             return;
         }
-        for ( int i = 0; i < filesToRemove.length; i++ ) {
-            if ( !filesToRemove[i].delete() ) {
-                throw new IOException( "Error removing signature file: " + filesToRemove[i] );
+        for (File aFilesToRemove : filesToRemove) {
+            if (!aFilesToRemove.delete()) {
+                throw new IOException("Error removing signature file: " + aFilesToRemove);
             }
 //            verboseLog("remove file :" + filesToRemove[i]);
         }

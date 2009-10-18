@@ -8,7 +8,7 @@ import proguard.Configuration;
 import proguard.ConfigurationParser;
 import proguard.ProGuard;
 
-public class ProguardHelper {
+class ProguardHelper {
     public static File run(File conf, File outJar) throws Exception {
         // create ProGuard configuration
         final Configuration configuration = new Configuration();

@@ -7,6 +7,7 @@ import java.io.File;
  *
  * @author davidB
  */
+@SuppressWarnings({"ALL"})
 public class SignConfig {
     /**
      * Should the keystore file should be generated.
