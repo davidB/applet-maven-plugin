@@ -1,32 +1,24 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>net.alchim31.maven</groupId>
-  <artifactId>maven-basicwebstart-plugin</artifactId>
-  <packaging>maven-plugin</packaging>
+  <parent>
+    <groupId>net.alchim31.maven</groupId>
+    <artifactId>alchim31-maven-parent</artifactId>
+    <version>6</version>
+  </parent>
+  <artifactId>applet-maven-plugin</artifactId>
   <version>0.3-SNAPSHOT</version>
+  <packaging>maven-plugin</packaging>
 
-  <name>maven-basicwebstart-plugin Maven Mojo</name>
-  <description>maven's plugin to generate jnlp,html,js, to merge jars, to sign, to pack200 jar (with support for nativelib, proguard,...)</description>
-  <url>http://github.com/davidB/maven-basicwebstart-plugin</url>
-  <licenses>
-    <license>
-      <name>Creative Commons GNU LGPL, Version 2.1</name>
-      <url>http://creativecommons.org/licenses/LGPL/2.1/</url>
-      <distribution>repo</distribution>
-    </license>
-  </licenses>
+  <name>Applet Packaging Helper Mojo</name>
+  <description>maven's plugin to generate jnlp, html, js, to merge jars, to sign, to pack200 jar (with support for nativelib, proguard,...)</description>
+  <url>http://github.com/davidB/${project.artifactId}</url>
 
-  <organization>
-    <name>alchim31</name>
-    <url>http://alchim31.net/</url>
-  </organization>
-  <developers>
-    <developer>
-      <name>David Bernard</name>
-      <timezone>GMT+2</timezone>
-    </developer>
-  </developers>
+  <scm>
+    <connection>scm:git:git://github.com/davidB/${project.artifactId}.git</connection>
+    <developerConnection>scm:git:git@github.com:davidB/${project.artifactId}.git</developerConnection>
+    <url>http://github.com/davidB/${project.artifactId}/</url>
+  </scm>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -156,24 +148,6 @@
       </plugin>
     </plugins>
   </reporting>
-
-  <scm>
-    <connection>scm:git:git://github.com/davidB/${project.artifactId}.git</connection>
-    <developerConnection>scm:git:git@github.com:davidB/${project.artifactId}.git</developerConnection>
-    <url>http://github.com/davidB/${project.artifactId}/</url>
-  </scm>
-  <distributionManagement>
-    <repository>
-      <id>oss.sonatype.org-releases</id>
-      <name>OSSRH Release Repository</name>
-      <url>http://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-    </repository>
-    <snapshotRepository>
-      <id>oss.sonatype.org-snapshots</id>
-      <name>OSSRH Snapshot Repository</name>
-      <url>http://oss.sonatype.org/content/repositories/github-snapshots/</url>
-    </snapshotRepository>
-  </distributionManagement>
 
   <profiles>
     <profile>
