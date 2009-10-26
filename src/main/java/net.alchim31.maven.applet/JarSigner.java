@@ -1,9 +1,4 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
-package net.alchim31.maven.basicwebstart;
+package net.alchim31.maven.applet;
 
 import java.io.File;
 import java.io.FileNotFoundException;

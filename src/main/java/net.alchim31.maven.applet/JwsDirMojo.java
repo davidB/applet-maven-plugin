@@ -1,4 +1,4 @@
-package net.alchim31.maven.basicwebstart;
+package net.alchim31.maven.applet;
 
 import java.io.File;
 import java.io.FileReader;

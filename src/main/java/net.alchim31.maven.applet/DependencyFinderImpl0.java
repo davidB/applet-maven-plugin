@@ -1,4 +1,4 @@
-package net.alchim31.maven.basicwebstart;
+package net.alchim31.maven.applet;
 
 import java.util.ArrayList;
 import java.util.Collection;
