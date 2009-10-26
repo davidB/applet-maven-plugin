@@ -1,7 +1,7 @@
 .svn
 dist
-target
-build.log
+**/target
+**/build.log
 
 #ignore eclipse
 .settings
@@ -16,3 +16,6 @@ bin
 *.ipr
 *.iws
 
+#maven
+pom.xml.releaseBackup
+release.properties
