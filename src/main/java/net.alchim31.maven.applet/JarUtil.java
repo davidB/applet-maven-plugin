@@ -1,17 +1,13 @@
 package net.alchim31.maven.applet;
 
-import java.io.File;
-import java.io.FileFilter;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.zip.GZIPOutputStream;
 
 import org.apache.commons.exec.CommandLine;
 import org.apache.commons.exec.DefaultExecutor;
@@ -57,27 +53,6 @@ class JarUtil {
         return dir;
     }
 
-    protected File unjar(File jarFile) throws Exception {
-        File tempDirParent = _tmpRootDir; //createTempDir();
-
-        // create temp dir
-        File tempDir = new File( tempDirParent, jarFile.getName() + ".dir" );
-        if (tempDir.exists() && (tempDir.lastModified() >= jarFile.lastModified())) {
-            _log.debug("keep existing extracted jar : " + tempDir);
-            return tempDir;
-        }
-
-        if (!tempDir.mkdirs() && !tempDir.exists()) {
-            throw new IOException( "Error creating temporary directory: " + tempDir );
-        }
-        // FIXME we probably want to be more security conservative here.
-        // it's very easy to guess where the directory will be and possible
-        // to access/change its contents before the file is rejared..
-
-        // extract jar into temporary directory
-        return unjar(jarFile, tempDir);
-    }
-    
     public File unjar(File jarFile, File outdir) throws Exception {
         JarFile jfile = new JarFile(jarFile);
         Enumeration<JarEntry> e = jfile.entries();
@@ -112,12 +87,24 @@ class JarUtil {
     
     //TODO optimisation : avoid exploding files on FS (memory pipeline)
     public void rejar(File jarIn, File jarOut, boolean compress, boolean unsign) throws Exception {
-        File explodedJarDir = unjar(jarIn);
+        File explodedJarDir = new File(jarOut.getCanonicalPath() + ".dir");
+
+        // FIXME we probably want to be more security conservative here.
+        // it's very easy to guess where the directory will be and possible
+        // to access/change its contents before the file is rejared..
+        if (explodedJarDir.exists() && (explodedJarDir.lastModified() >= jarIn.lastModified()) && explodedJarDir.list().length > 0) {
+            _log.debug("keep existing extracted jar : " + explodedJarDir);
+        } else {
+            if (!explodedJarDir.mkdirs() && !explodedJarDir.exists()) {
+                throw new IOException( "Error creating temporary directory: " + explodedJarDir );
+            }
+            explodedJarDir = unjar(jarIn, explodedJarDir);
+        }
         if (unsign) {
             unsign(explodedJarDir);
         }
         jar(explodedJarDir, jarOut, compress);
-        //FileUtils.deleteDirectory(explodedJarDir); //Hack keep the exploded jar for quicker rerun
+        FileUtils.deleteDirectory(explodedJarDir); //Hack keep the exploded jar for quicker rerun ??
     }
     
     public static void unsign(File explodedJarDir) throws Exception {
@@ -173,7 +160,7 @@ class JarUtil {
         }
         //jar cvfm classes.jar mymanifest -C foo/ .
         CommandLine commandLine = new CommandLine( findJavaExec("jar") );
-        commandLine.addArguments(new String[]{"cf", jarFile.getCanonicalPath(), "-C", explodedJarDir.getCanonicalPath(), "."});
+        commandLine.addArguments(new String[]{compress ? "cf" : "c0f", jarFile.getCanonicalPath(), "-C", explodedJarDir.getCanonicalPath(), "."});
         exec(commandLine);
 
 //        sun.tools.jar.Main jartool = new sun.tools.jar.Main(System.out, System.err, "jar");
@@ -254,6 +241,21 @@ class JarUtil {
         exec(commandLine, false);
     }
     
+    public File gzip(File src, File dest) throws Exception {
+        InputStream istream = null;
+        OutputStream ostream = null;
+        try {
+            istream = new FileInputStream(src);
+            ostream = new GZIPOutputStream(new FileOutputStream(dest));
+            IOUtil.copy(istream, ostream);
+            ostream.flush();
+        } finally {
+            IOUtil.close(ostream);
+            IOUtil.close(istream);
+        }
+        return dest;
+    }
+
     public File pack(File jar, String[] options, final Log log) throws Exception {
 //        Packer packer = Pack200.newPacker();
 
@@ -276,6 +278,7 @@ class JarUtil {
 //    p.put(Packer.UNKNOWN_ATTRIBUTE, Packer.ERROR);
 //    // pass one class file uncompressed:
 //    p.put(Packer.PASS_FILE_PFX+0, "mutants/Rogue.class");
+        //TODO manage the case where options contains "-g, --no-gzip"
         File back = new File(jar.getAbsolutePath() + ".pack.gz");
 //        JarFile in = null;
 //        OutputStream out = null;
@@ -294,7 +297,7 @@ class JarUtil {
         }
         // pack200 doesn't work for jar >1MB by default
         if (jar.length() > 1024*1024) {
-            System.out.println(">> big jar (" + jar.length() / 1024 + ") => modify segment-limit of pack");
+            log.info("big jar (" + jar.length() / 1024 + ") => modify segment-limit of pack");
             commandLine.addArguments(new String[]{"--segment-limit=-1"});
         }
         commandLine.addArguments(new String[]{back.getAbsolutePath(), jar.getAbsolutePath()});
@@ -384,4 +387,5 @@ class JarUtil {
             }
         }
     }
+
 }

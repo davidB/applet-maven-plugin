@@ -1,5 +1,6 @@
 .svn
 dist
+target
 **/target
 **/build.log
 

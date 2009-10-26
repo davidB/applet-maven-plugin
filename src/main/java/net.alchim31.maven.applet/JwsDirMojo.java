@@ -41,6 +41,7 @@ import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
+import org.codehaus.plexus.util.StringUtils;
 
 /**
  * generate jnlp (from template), rename, sign, pack jar
@@ -50,6 +51,9 @@ import com.google.common.collect.Lists;
  * @author david.bernard
  */
 public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.logging.LogEnabled{
+
+    private static String COMPRESSION_GZ = ".gz";
+    private static String COMPRESSION_PACKGZ = ".pack.gz";
 
     /**
      * Location of the file.
@@ -80,14 +84,17 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     private SignConfig sign;
 
     /**
+     * Request to also generate a second version of jar with a complementary compression.
+     * Complementary compression is apply on uncompressed jar (for better result).
+     * Supported values are ".gz", ".pack.gz"
      * Should generate a .pack.gz version of the jar.
      * The value could be used in template call via "${packEnabled}", use it
      * to avoid to keep sync your pom.xml and you .jnlp.vm
      *
      * @see http://java.sun.com/javase/6/docs/technotes/guides/jweb/tools/pack200.html#pack200
-     * @parameter expression="${jnlp.packEnabled}" default-value="true"
+     * @parameter expression="${applet.compression}" default-value=""
      */
-    private boolean packEnabled;
+    private String compression;
 
     /**
      * Should unpack and verify signature after packing ?
@@ -96,8 +103,8 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     private boolean packVerifySignature;
 
     /**
-     * Optionnal additionnal options to use when calling pack200 (eg:
-     * --modification-time=latest --deflate-hint="true" --strip-debug).
+     * Optionnal additionnal options to use when calling pack200 (is compression set to .pack.gz)
+     * (eg: --modification-time=latest --deflate-hint=true --strip-debug).
      *
      * @see http://java.sun.com/j2se/1.5.0/docs/guide/deployment/deployment-guide/pack200.html#pack200_compression
      * @see http://java.sun.com/javase/6/docs/technotes/guides/jweb/tools/pack200.html#pack200
@@ -216,6 +223,14 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             _ju = new JarUtil(new File(project.getBuild().getDirectory()), getLog());
             initJars(); //reset jarList before template fill it
             _depFinder = new DependencyFinderImpl0(project);
+            if (COMPRESSION_GZ.equals(compression) || COMPRESSION_PACKGZ.equals(compression)) {
+                getLog().info(" - - enable compression : "+ compression);
+            } else {
+                if (StringUtils.isNotBlank(compression)) {
+                    getLog().warn(" - - disable compression '"+ compression + "' not supported, choose : '" + COMPRESSION_GZ + "', '"+ COMPRESSION_PACKGZ +"'");
+                }
+                compression = null;
+            }
 
             getLog().info("step 1 : register proguard out jar (if exists)");
             for(File file : inputDirectory.listFiles()) {
@@ -301,7 +316,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         context.put("outputDir", this.outputDirectory);
         context.put("jws", this);
         context.put("project", project);
-        context.put("packEnabled", packEnabled);
+        context.put("packEnabled", COMPRESSION_PACKGZ.equals(compression));
         context.put("versionEnabled", versionEnabled);
         return context;
     }
@@ -511,8 +526,9 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         }));
         
         getLog().debug(" - - waiting end of jar processing...");
+        exec.shutdown();
         long totalSizeJar = 0;
-        long totalSizePacked = 0;
+        long totalSizeCompressed = 0;
         long nbFile = 0;
         for(Future<ProcessJarResult> rjar : rjars) {
             ProcessJarResult result = rjar.get();
@@ -520,19 +536,19 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             if (result.jar != null) {
                 totalSizeJar += result.jar.length();
             }
-            if (result.packed != null) {
-                totalSizePacked += result.packed.length();
+            if (result.compressed != null) {
+                totalSizeCompressed += result.compressed.length();
             }
         }
         getLog().info(" - - total size of .jar         : " + totalSizeJar / 1024 + " KB");
-        if ((totalSizeJar > 0) &&  (totalSizePacked > 0)) {
-            getLog().info(" - - total size of .jar.pack.gz : " + totalSizePacked / 1024 + " KB ~ " + (totalSizePacked*100/totalSizeJar) + "%");
+        if ((totalSizeJar > 0) &&  (totalSizeCompressed > 0)) {
+            getLog().info(" - - total size of .jar" + compression +" : " + totalSizeCompressed / 1024 + " KB ~ " + (totalSizeCompressed * 100/totalSizeJar) + "%");
         }
         getLog().info(" - - total number of jar        : " +  nbFile);
     }
     
     public static class ProcessJarResult {
-        public File packed;
+        public File compressed;
         public File jar;
     }
 
@@ -552,7 +568,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
 //        _ju.createIndex(dest, getLog());
         
 
-        if (packEnabled) {
+        if (COMPRESSION_PACKGZ.equals(compression)) {
             logger.debug(" - - repack : " + dest);
             _ju.repack(dest, packOptions);
         }
@@ -562,7 +578,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         back.jar = dest;
         
         //signer.verify(out);
-        if (packEnabled) {
+        if (COMPRESSION_PACKGZ.equals(compression)) {
             logger.debug(" - - pack :" + dest);
             File tmp3 = new File(outputDir, dest.getName()+"-tmp3.jar");
             try {
@@ -572,13 +588,26 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
                     _ju.unpack(dest, tmp3);
                     _ju.verifySignature(tmp3);
                 }
-                back.packed = packed;
+                back.compressed = packed;
 //                    long sizeBefore = dest.length();
 //                    _ju.rejar(dest, dest, archiverManager, true, false);
 //                    System.out.println("size before rejar : "+ sizeBefore + " - "+ dest.length() + " = " + (sizeBefore - dest.length()));
             } finally {
                 tmp3.delete();
             }
+        }
+
+        if (COMPRESSION_GZ.equals(compression)) {
+            // compress over an uncompressed jar for better compression
+            logger.debug(" - - compress :" + dest);
+            File tmp4 = new File(outputDir, dest.getName()+"-tmp4.jar");
+            try {
+                _ju.rejar(dest, tmp4, false, false);
+                back.compressed = _ju.gzip(tmp4, new File(dest.getCanonicalPath() + compression));
+            } finally {
+                tmp4.delete();
+            }
+
         }
         logger.debug("end generation of " + dest);
         return back;
