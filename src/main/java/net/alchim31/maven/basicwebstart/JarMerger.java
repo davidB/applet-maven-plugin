@@ -31,7 +31,7 @@ public class JarMerger {
 
     public Artifact getMergedJar() throws Exception {
         if (_result.getFile() == null) {
-            File mergedJar = File.createTempFile("jarmerger-", ".jar", _ju.createTempDir());
+            File mergedJar = File.createTempFile("jarmerger-", ".jar", _ju.getTempDir());
 
             File mergedJarDir = new File(mergedJar.getAbsolutePath() + ".dir");
             mergedJarDir.mkdirs();

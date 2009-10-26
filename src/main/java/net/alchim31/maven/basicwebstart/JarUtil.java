@@ -38,6 +38,7 @@ class JarUtil {
     
     JarUtil(File tmpParentDir, Log log) {
         _tmpRootDir = new File(tmpParentDir, "jarutil.tmp");
+        _tmpRootDir.mkdirs();
         _log = log;
     }
 
@@ -50,19 +51,23 @@ class JarUtil {
     }
 
     // TODO check that tempDir is removed on shutdown
-    public File createTempDir() throws Exception {
-        File dir = new File(_tmpRootDir, String.valueOf(System.currentTimeMillis()));
-        dir.mkdirs();
+    public File getTempDir() throws Exception {
+        File dir = _tmpRootDir;//new File(_tmpRootDir, String.valueOf(System.currentTimeMillis()));
+        //dir.mkdirs();
         return dir;
     }
 
-    File unjar(File jarFile) throws Exception {
-        File tempDirParent = createTempDir();
+    protected File unjar(File jarFile) throws Exception {
+        File tempDirParent = _tmpRootDir; //createTempDir();
 
         // create temp dir
         File tempDir = new File( tempDirParent, jarFile.getName() + ".dir" );
+        if (tempDir.exists() && (tempDir.lastModified() >= jarFile.lastModified())) {
+            _log.debug("keep existing extracted jar : " + tempDir);
+            return tempDir;
+        }
 
-        if (!tempDir.mkdir()) {
+        if (!tempDir.mkdirs() && !tempDir.exists()) {
             throw new IOException( "Error creating temporary directory: " + tempDir );
         }
         // FIXME we probably want to be more security conservative here.
@@ -101,6 +106,7 @@ class JarUtil {
                 f.setLastModified(lastModified);
             }
         }
+        outdir.setLastModified(jarFile.lastModified());
         return outdir;
     }
     
@@ -111,7 +117,7 @@ class JarUtil {
             unsign(explodedJarDir);
         }
         jar(explodedJarDir, jarOut, compress);
-        FileUtils.deleteDirectory(explodedJarDir);
+        //FileUtils.deleteDirectory(explodedJarDir); //Hack keep the exploded jar for quicker rerun
     }
     
     public static void unsign(File explodedJarDir) throws Exception {

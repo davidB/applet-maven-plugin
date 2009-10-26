@@ -266,10 +266,10 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             processJars(outputDirectory);
         } catch (Exception e ) {
             throw new MojoExecutionException("Error generation jws dir", e );
-        } finally {
-            if (_ju != null && !getLog().isDebugEnabled()) {
-                _ju.clean();
-            }
+//        } finally {
+//            if (_ju != null && !getLog().isDebugEnabled()) {
+//                _ju.clean();
+//            }
         }
     }
 
@@ -394,7 +394,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         }
     }
 
-    private static HashSet<Artifact> _jars = null;
+    private static HashMap<String, Artifact> _jars = null;
 //    public static String addJar(String jar) throws Exception {
 //        _jars.add(jar);
 //        String back = "href=\"" + jar + "\"";
@@ -407,7 +407,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     }
 
     public static CharSequence addJar(Artifact artifact, boolean outputAsJnlpAttributes) throws Exception {
-        _jars.add(artifact);
+        _jars.put(artifact.getFile().getName(), artifact);
         if (outputAsJnlpAttributes) {
             StringBuilder back = new StringBuilder();
             back.append("href=\"")
@@ -424,7 +424,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     }
     
     private void initJars() throws Exception {
-        _jars = new HashSet<Artifact>();
+        _jars = new HashMap<String, Artifact>();
     }
 
     private static boolean isSnapshot(Artifact artifact) {
@@ -487,8 +487,8 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     //    % jarsigner -verify HelloT1.jar
     //    jar verified.
     private void processJars(final File outputDir) throws Exception {
-        final JarSigner signer = new JarSigner(sign, _ju.createTempDir(), getLog(), verbose);
-        List<Artifact> jars = Lists.newArrayList(Collections2.filter(_jars, new Predicate<Artifact>(){
+        final JarSigner signer = new JarSigner(sign, _ju.getTempDir(), getLog(), verbose);
+        List<Artifact> jars = Lists.newArrayList(Collections2.filter(_jars.values(), new Predicate<Artifact>(){
             public boolean apply(Artifact arg0) {
                 return arg0 != null && arg0.getFile() != null && arg0.getFile().exists();
             }
