@@ -566,46 +566,39 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
 
 //        getLog().debug(" - - create INDEX.LIST");
 //        _ju.createIndex(dest, getLog());
-        
-
-        if (COMPRESSION_PACKGZ.equals(compression)) {
-            logger.debug(" - - repack : " + dest);
-            _ju.repack(dest, packOptions);
-        }
 
         getLog().debug(" - - sign  : " + dest);
         signer.sign(dest, dest);
         back.jar = dest;
         
         //signer.verify(out);
-        if (COMPRESSION_PACKGZ.equals(compression)) {
-            logger.debug(" - - pack :" + dest);
-            File tmp3 = new File(outputDir, dest.getName()+"-tmp3.jar");
-            try {
-                File packed = _ju.pack(dest, packOptions, logger);
-                if (packVerifySignature) {
-                    getLog().debug(" - - verify packed");
-                    _ju.unpack(dest, tmp3);
-                    _ju.verifySignature(tmp3);
-                }
-                back.compressed = packed;
-//                    long sizeBefore = dest.length();
-//                    _ju.rejar(dest, dest, archiverManager, true, false);
-//                    System.out.println("size before rejar : "+ sizeBefore + " - "+ dest.length() + " = " + (sizeBefore - dest.length()));
-            } finally {
-                tmp3.delete();
-            }
-        }
 
-        if (COMPRESSION_GZ.equals(compression)) {
+        if (compression != null) {
             // compress over an uncompressed jar for better compression
             logger.debug(" - - compress :" + dest);
-            File tmp4 = new File(outputDir, dest.getName()+"-tmp4.jar");
+            File tmp3 = new File(outputDir, dest.getName()+"-tmp3.jar");
             try {
-                _ju.rejar(dest, tmp4, false, false);
-                back.compressed = _ju.gzip(tmp4, new File(dest.getCanonicalPath() + compression));
+                _ju.rejar(dest, tmp3, false, true);
+                if (packOptions != null && packOptions.length > 0) {
+                    logger.debug(" - - repack : " + tmp3);
+                    _ju.repack(tmp3, packOptions); //repack is used to strip some info in classes and jar
+                }
+                getLog().debug(" - - sign compressed : " + tmp3);
+                signer.sign(tmp3, tmp3);
+                if (COMPRESSION_GZ.equals(compression)) {
+                    back.compressed = _ju.gzip(tmp3, new File(dest.getCanonicalPath() + compression));
+                } else if (COMPRESSION_PACKGZ.equals(compression)) {
+                    File packed = _ju.pack(tmp3, packOptions, logger);
+                    tmp3.delete();
+                    if (packVerifySignature) {
+                        getLog().debug(" - - verify packed");
+                        _ju.unpack(packed, tmp3);
+                        _ju.verifySignature(tmp3);
+                    }
+                    back.compressed = packed;
+                }
             } finally {
-                tmp4.delete();
+                tmp3.delete();
             }
 
         }
