@@ -90,7 +90,8 @@ class JarUtil {
      * @return the directory with the content of the jar.
      */
     public File rejar(File jarIn, File jarOut, boolean compress, boolean unsign) throws Exception {
-        File explodedJarDir = new File(jarOut.getCanonicalPath() + ".dir");
+        File explodedJarDir = new File(_tmpRootDir, jarOut.getName() + ".dir");
+        //HACK not clean because it modify original if it's a directory, but avoid multiple unjar
         if (jarIn.isDirectory()) {
             explodedJarDir = jarIn;
         }
