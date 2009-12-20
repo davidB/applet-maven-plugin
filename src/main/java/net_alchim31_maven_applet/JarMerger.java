@@ -1,4 +1,4 @@
-package net.alchim31.maven.applet;
+package net_alchim31_maven_applet;
 
 import java.io.File;
 import java.util.HashSet;
@@ -12,12 +12,14 @@ public class JarMerger {
     private HashSet<Artifact> _jars = new HashSet<Artifact>();
     private Log _logger;
     private JarUtil _ju;
-    
-    public JarMerger(Artifact result, JarUtil ju, Log logger) {
+    private boolean _resultAsDir;
+
+    public JarMerger(Artifact result, JarUtil ju, Log logger, boolean resultAsDir) {
         _result = result;
         _logger = logger;
         _result.setFile(null);
         _ju = ju;
+        _resultAsDir = resultAsDir;
     }
 
     public void addJar(Artifact artifact) throws Exception {
@@ -43,9 +45,13 @@ public class JarMerger {
             new File(mergedJarDir, "META-INF/INDEX.LIST").delete();
             JarUtil.unsign(mergedJarDir);
             //TODO add a file that list every artifact merged ??
-            _ju.jar(mergedJarDir, mergedJar, true);
             _result.setGroupId(GROUP_ID);
-            _result.setFile(mergedJar);
+            if (_resultAsDir) {
+                _result.setFile(mergedJarDir);
+            } else {
+                _ju.jar(mergedJarDir, mergedJar, true);
+                _result.setFile(mergedJar);
+            }
         }
         return _result;
     }

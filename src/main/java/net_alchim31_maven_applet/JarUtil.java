@@ -1,4 +1,4 @@
-package net.alchim31.maven.applet;
+package net_alchim31_maven_applet;
 
 import java.io.*;
 import java.util.Arrays;
@@ -31,7 +31,7 @@ class JarUtil {
 
     private File _tmpRootDir = null;
     private Log _log = null;
-    
+
     JarUtil(File tmpParentDir, Log log) {
         _tmpRootDir = new File(tmpParentDir, "jarutil.tmp");
         _tmpRootDir.mkdirs();
@@ -84,10 +84,16 @@ class JarUtil {
         outdir.setLastModified(jarFile.lastModified());
         return outdir;
     }
-    
+
     //TODO optimisation : avoid exploding files on FS (memory pipeline)
-    public void rejar(File jarIn, File jarOut, boolean compress, boolean unsign) throws Exception {
+    /**
+     * @return the directory with the content of the jar.
+     */
+    public File rejar(File jarIn, File jarOut, boolean compress, boolean unsign) throws Exception {
         File explodedJarDir = new File(jarOut.getCanonicalPath() + ".dir");
+        if (jarIn.isDirectory()) {
+            explodedJarDir = jarIn;
+        }
 
         // FIXME we probably want to be more security conservative here.
         // it's very easy to guess where the directory will be and possible
@@ -104,9 +110,10 @@ class JarUtil {
             unsign(explodedJarDir);
         }
         jar(explodedJarDir, jarOut, compress);
-        FileUtils.deleteDirectory(explodedJarDir); //Hack keep the exploded jar for quicker rerun ??
+        //FileUtils.deleteDirectory(explodedJarDir); //Hack keep the exploded jar for quicker rerun ??
+        return explodedJarDir;
     }
-    
+
     public static void unsign(File explodedJarDir) throws Exception {
         // create and check META-INF directory
         File metaInf = new File( explodedJarDir, "META-INF" );
@@ -147,6 +154,7 @@ class JarUtil {
         }
         File manifestFile = new File( explodedJarDir, JarFile.MANIFEST_NAME );
         if (!manifestFile.exists()) {
+            manifestFile.getParentFile().mkdirs();
             FileOutputStream os = new FileOutputStream(manifestFile);
             try {
                 new Manifest().write(os);
@@ -165,13 +173,13 @@ class JarUtil {
 
 //        sun.tools.jar.Main jartool = new sun.tools.jar.Main(System.out, System.err, "jar");
 //        if (!jartool.run(new String[]{"cMf", jarFile.getCanonicalPath(), "-C", explodedJarDir.getCanonicalPath(), "."})) {
-//            throw new Exception("failed to execute sun.tools.jar.Main.run(...)"); 
+//            throw new Exception("failed to execute sun.tools.jar.Main.run(...)");
 //        }
 
-        
+
 //        jarArchiver.setIndex(true);
 //        jarArchiver.createArchive();
-        
+
 //        CheckedOutputStream checksum = new CheckedOutputStream(new FileOutputStream(jarFile), new Adler32());
 //        ZipOutputStream jos = new ZipOutputStream(checksum);
 //        try {
@@ -225,7 +233,7 @@ class JarUtil {
 //            }
 //        }
 //    }
-    
+
     public void createIndex(File jar) throws Exception {
         CommandLine commandLine = new CommandLine( findJavaExec("jar") );
         commandLine.addArguments(new String[]{"iv", jar.getCanonicalPath()});
@@ -240,7 +248,7 @@ class JarUtil {
 //        }), String.class));
         exec(commandLine, false);
     }
-    
+
     public File gzip(File src, File dest) throws Exception {
         InputStream istream = null;
         OutputStream ostream = null;
@@ -331,7 +339,7 @@ class JarUtil {
         commandLine.addArguments(new String[]{"-verify", jar.getAbsolutePath()});
         exec(commandLine);
     }
-    
+
     private File findJavaExec(String name) throws Exception {
         File jhome = new File(System.getProperty("java.home"));
         File f = findJavaExec(jhome, name);
@@ -340,7 +348,7 @@ class JarUtil {
         }
         return f;
     }
-    
+
     private File findJavaExec(File jhome, String name) throws Exception {
         File f = new File(jhome, "bin/" + name);
         if (!f.exists()) {
@@ -353,7 +361,7 @@ class JarUtil {
     private void exec(CommandLine commandLine) throws Exception {
         exec(commandLine, true);
     }
-    
+
     private void exec(CommandLine commandLine, boolean throwFailure) throws Exception {
         try {
 //        StreamConsumer stdout = new StreamConsumer() {

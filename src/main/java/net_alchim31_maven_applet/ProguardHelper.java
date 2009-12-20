@@ -1,4 +1,4 @@
-package net.alchim31.maven.applet;
+package net_alchim31_maven_applet;
 
 import java.io.File;
 
@@ -27,7 +27,7 @@ class ProguardHelper {
                 jars.remove(i);
             }
         }
-        
+
         //nothing to do if injars and conffile are less recent that outjar (useless conf is always younger)
 //        boolean shouldRun = outJar.canRead();
 //        shouldRun = shouldRun || outJar.lastModified() < conf.lastModified();

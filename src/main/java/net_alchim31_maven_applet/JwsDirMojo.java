@@ -1,4 +1,4 @@
-package net.alchim31.maven.applet;
+package net_alchim31_maven_applet;
 
 import java.io.File;
 import java.io.FileReader;
@@ -125,16 +125,16 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     /**
      * Size of the Thread Pool use to process jar (unsign, sign, packe,...) (default is nb of processor)
      *
-     * @parameter expression="${jws.nbprocessor}" 
+     * @parameter expression="${jws.nbprocessor}"
      */
     private int nbProcessor = Runtime.getRuntime().availableProcessors();
-    
+
     /**
      * Enable verbose
      *
-     * @parameter expression="${verbose}" default-value="false"
+     * @parameter expression="${verbose}" default-value="true"
      */
-    private boolean verbose;
+    private boolean verbose=true;
 
     /**
      * @parameter expression="${project}"
@@ -186,7 +186,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * @readonly
      */
     private MavenProjectBuilder mavenProjectBuilder;
-    
+
 //    /**
 //     * The artifact collector to use.
 //     *
@@ -326,7 +326,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         JarMerger back = _mergedJars.get(classifier);
         if (back == null) {
             Artifact result = artifactFactory.createArtifactWithClassifier(project.getGroupId(), project.getArtifactId(), project.getVersion(), "jar", classifier);
-            back = new JarMerger(result, _ju, getLog());
+            back = new JarMerger(result, _ju, getLog(), false);
             _mergedJars.put(classifier, back);
         } else {
             getLog().warn("reuse already define jarMerger for classifier '"+ classifier +"'");
@@ -437,7 +437,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         }
         return findFilename(artifact, false);
     }
-    
+
     private void initJars() throws Exception {
         _jars = new HashMap<String, Artifact>();
     }
@@ -468,7 +468,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         back.append('.').append(artifact.getType());
         return back.toString();
     }
-    
+
     // see http://java.sun.com/j2se/1.5.0/docs/guide/deployment/deployment-guide/pack200.html
     // see http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5078608
     //    Step 1:  Repack the file to normalize the jar, repacking calls the packer and unpacks the file in one step.
@@ -510,7 +510,14 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         }));
         Collections.sort(jars, new Comparator<Artifact>(){
             public int compare(Artifact o1, Artifact o2) {
-                return o1.getArtifactId().compareToIgnoreCase(o2.getArtifactId());
+                int back = o1.getGroupId().compareToIgnoreCase(o2.getGroupId());
+                if (back == 0) {
+                    back = o1.getArtifactId().compareToIgnoreCase(o2.getArtifactId());
+                }
+                if (back == 0) {
+                    back = String.valueOf(o1.getClassifier()).compareToIgnoreCase(String.valueOf(o2.getClassifier()));
+                }
+                return back;
             }
         });
         getLog().info(" - - thread pool size : " + nbProcessor);
@@ -519,12 +526,13 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             public Callable<ProcessJarResult> apply(final Artifact arg0) {
                 return new Callable<ProcessJarResult>() {
                     public ProcessJarResult call() throws Exception {
-                        return processJar(arg0, outputDir, getLog(), signer);                    
+                        getLog().info(" - - process artifact : " + arg0);
+                        return processJar(arg0, outputDir, getLog(), signer);
                     }
                 };
             }
         }));
-        
+
         getLog().debug(" - - waiting end of jar processing...");
         exec.shutdown();
         long totalSizeJar = 0;
@@ -546,7 +554,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         }
         getLog().info(" - - total number of jar        : " +  nbFile);
     }
-    
+
     public static class ProcessJarResult {
         public File compressed;
         public File jar;
@@ -556,13 +564,9 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         ProcessJarResult back = new ProcessJarResult();
         File in = artifact.getFile();
         File dest = new File(outputDir, findFilename(artifact, true));
+
         logger.debug(" - - unsign :" + in + " to " + dest);
-        if (JarMerger.GROUP_ID.equals(artifact.getGroupId())) {
-            in.renameTo(dest);
-            artifact.setFile(dest);
-        } else {
-            _ju.rejar(in, dest, true, true);
-        }
+        File exploded = _ju.rejar(in, dest, true, true);
 
 //        getLog().debug(" - - create INDEX.LIST");
 //        _ju.createIndex(dest, getLog());
@@ -570,7 +574,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         getLog().debug(" - - sign  : " + dest);
         signer.sign(dest, dest);
         back.jar = dest;
-        
+
         //signer.verify(out);
 
         if (compression != null) {
@@ -578,7 +582,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             logger.debug(" - - compress :" + dest);
             File tmp3 = new File(outputDir, dest.getName()+"-tmp3.jar");
             try {
-                _ju.rejar(dest, tmp3, false, true);
+                _ju.rejar(exploded, tmp3, false, true);
                 if (packOptions != null && packOptions.length > 0) {
                     logger.debug(" - - repack : " + tmp3);
                     _ju.repack(tmp3, packOptions); //repack is used to strip some info in classes and jar
@@ -589,7 +593,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
                     back.compressed = _ju.gzip(tmp3, new File(dest.getCanonicalPath() + compression));
                 } else if (COMPRESSION_PACKGZ.equals(compression)) {
                     File packed = _ju.pack(tmp3, packOptions, logger);
-                    tmp3.delete();
+                    tryDelete(tmp3);
                     if (packVerifySignature) {
                         getLog().debug(" - - verify packed");
                         _ju.unpack(packed, tmp3);
@@ -598,11 +602,21 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
                     back.compressed = packed;
                 }
             } finally {
-                tmp3.delete();
+                tryDelete(tmp3);
             }
 
         }
         logger.debug("end generation of " + dest);
         return back;
+    }
+
+    private void tryDelete(File f) {
+        try {
+            if (f.exists() && !f.delete()) {
+                getLog().warn("failed to delete :" + f);
+            }
+        } catch (Exception exc) {
+            getLog().warn("failed to delete :" + f);
+        }
     }
 }

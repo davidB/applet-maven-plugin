@@ -1,4 +1,4 @@
-package net.alchim31.maven.applet;
+package net_alchim31_maven_applet;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -68,7 +68,7 @@ class JarSigner {
                 genKeystore.setWorkingDir(workDirectory);
                 genKeystore.setLog(log);
                 genKeystore.execute();
-    
+
                 cfg.generateKeystore = false;
             }
             if ((cfg.keystore != null) && !cfg.keystore.exists()){

@@ -7,7 +7,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
 
-import net.alchim31.maven.applet.DependencyFinder;
+import net_alchim31_maven_applet.DependencyFinder;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;
