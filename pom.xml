@@ -6,7 +6,7 @@
     <version>7</version>
   </parent>
   <artifactId>applet-maven-plugin</artifactId>
-  <version>0.6</version>
+  <version>0.7-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
 
   <name>Applet Packaging Helper Mojo</name>
