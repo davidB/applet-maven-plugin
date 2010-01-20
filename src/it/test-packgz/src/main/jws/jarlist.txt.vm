@@ -1,0 +1,4 @@
+#set( $dependencies = $jws.findDependencies() )##
+#foreach( $dependency in ${dependencies} )##
+${jws.addJar($dependency, false)}
+#end##

@@ -1,0 +1,46 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Building test-1
+[INFO]    task-segment: [clean, package]
+[INFO] ------------------------------------------------------------------------
+[INFO] [clean:clean {execution: default-clean}]
+[INFO] Deleting directory /home/dwayne/work/oss/applet-maven-plugin/src/it/test-packgz/target
+[INFO] [resources:resources {execution: default-resources}]
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory /home/dwayne/work/oss/applet-maven-plugin/src/it/test-packgz/src/main/resources
+[INFO] [compiler:compile {execution: default-compile}]
+[INFO] No sources to compile
+[INFO] [resources:testResources {execution: default-testResources}]
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory /home/dwayne/work/oss/applet-maven-plugin/src/it/test-packgz/src/test/resources
+[INFO] [compiler:testCompile {execution: default-testCompile}]
+[INFO] No sources to compile
+[INFO] [surefire:test {execution: default-test}]
+[INFO] No tests to run.
+[INFO] [jar:jar {execution: default-jar}]
+[WARNING] JAR will be empty - no content was marked for inclusion!
+[INFO] Building jar: /home/dwayne/work/oss/applet-maven-plugin/src/it/test-packgz/target/test-1-testing.jar
+[INFO] [applet:jwsdir {execution: default}]
+[INFO] start on : /home/dwayne/work/oss/applet-maven-plugin/src/it/test-packgz/src/main/jws
+[INFO] step 0 : initialisation
+[INFO]  - - enable compression : .pack.gz
+[INFO] step 1 : register proguard out jar (if exists)
+[INFO] step 2 : copy files and process templates
+[INFO]  - - process template : jarlist.txt.vm
+[INFO] step 3 : run proguard on *.proguard.conf
+[INFO] step 4 : generate .jar (and .pack.gz)
+[INFO]  - - thread pool size : 2
+[INFO]  - - process artifact : net.alchim31.maven.it:test-1:jar:testing
+[INFO]  - - process artifact : org.apache.commons:commons-io:jar:1.3.2:compile
+[INFO]  - - total size of .jar         : 88 KB
+[INFO]  - - total size of .jar.pack.gz : 23 KB ~ 25%
+[INFO]  - - total number of jar        : 2
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESSFUL
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time: 5 seconds
+[INFO] Finished at: Wed Jan 20 23:54:52 CET 2010
+[INFO] Final Memory: 17M/81M
+[INFO] ------------------------------------------------------------------------
+Running post-build script in: /home/dwayne/work/oss/applet-maven-plugin/src/it/test-packgz/validate.groovy
+Finished post-build script in: /home/dwayne/work/oss/applet-maven-plugin/src/it/test-packgz/validate.groovy

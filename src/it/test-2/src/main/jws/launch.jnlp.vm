@@ -19,8 +19,9 @@
     <property name="jnlp.packEnabled" value="${packEnabled}"/>
     <property name="jnlp.versionEnabled" value="${versionEnabled}"/>
     <property name="sun.java2d.noddraw" value="true"/>
-    
+
 #set( $native = ["linux", "macosx", "win32"] )##
+#set( $dependencies = $jws.findDependencies() )##
 #foreach( $dependency in ${dependencies} )##
 #if ( ! $native.contains($dependency.classifier))##
     <jar ${jws.addJar($dependency)} />

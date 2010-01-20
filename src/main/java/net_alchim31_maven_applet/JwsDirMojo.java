@@ -589,17 +589,22 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
                 }
                 getLog().debug(" - - sign compressed : " + tmp3);
                 signer.sign(tmp3, tmp3);
+                File compressed = new File(dest.getCanonicalPath() + compression);
                 if (COMPRESSION_GZ.equals(compression)) {
-                    back.compressed = _ju.gzip(tmp3, new File(dest.getCanonicalPath() + compression));
+                    back.compressed = _ju.gzip(tmp3, compressed);
                 } else if (COMPRESSION_PACKGZ.equals(compression)) {
-                    File packed = _ju.pack(tmp3, packOptions, logger);
+                    File tmp3packed = _ju.pack(tmp3, packOptions, logger);
                     tryDelete(tmp3);
-                    if (packVerifySignature) {
-                        getLog().debug(" - - verify packed");
-                        _ju.unpack(packed, tmp3);
-                        _ju.verifySignature(tmp3);
+                    if (!tmp3packed.renameTo(compressed)) {
+                        throw new IllegalStateException("can't rename " + tmp3packed + " to "+ compressed);
+                    } else {
+                        if (packVerifySignature) {
+                            getLog().debug(" - - verify packed");
+                            _ju.unpack(compressed, tmp3);
+                            _ju.verifySignature(tmp3);
+                        }
+                        back.compressed = compressed;
                     }
-                    back.compressed = packed;
                 }
             } finally {
                 tryDelete(tmp3);

@@ -41,8 +41,8 @@
     <plugins>
       <plugin>
         <groupId>net.alchim31.maven</groupId>
-        <artifactId>maven-basicwebstart-plugin</artifactId>
-        <version>testing</version>
+        <artifactId>applet-maven-plugin</artifactId>
+        <version>@project.version@</version>
         <executions>
           <execution>
             <phase>package</phase>

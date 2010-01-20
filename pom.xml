@@ -52,7 +52,7 @@
       <artifactId>proguard</artifactId>
       <version>4.3</version>
     </dependency>
-    
+
     <dependency>
       <groupId>org.apache.velocity</groupId>
       <artifactId>velocity</artifactId>
@@ -63,7 +63,7 @@
       <artifactId>commons-exec</artifactId>
       <version>1.0</version>
     </dependency>
-        
+
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
@@ -150,25 +150,37 @@
 
   <profiles>
     <profile>
-      <id>it</id>
+      <id>integration-tests</id>
       <activation>
         <property>
-          <name>shit</name>
-          <value>true</value>
+          <name>maven.test.skip</name>
+          <value>!true</value>
         </property>
       </activation>
       <build>
-        <defaultGoal>install</defaultGoal>
         <plugins>
           <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>shitty-maven-plugin</artifactId>
+            <artifactId>maven-invoker-plugin</artifactId>
+            <version>1.3</version>
+            <configuration>
+              <debug>false</debug>
+              <streamLogs>true</streamLogs>
+              <projectsDirectory>src/it</projectsDirectory>
+              <pomIncludes>
+                <pomInclude>**/pom.xml</pomInclude>
+              </pomIncludes>
+              <pomExcludes>
+                <pomExclude>**/m*/pom.xml</pomExclude>
+              </pomExcludes>
+              <preBuildHookScript>setup.groovy</preBuildHookScript>
+              <postBuildHookScript>validate.groovy</postBuildHookScript>
+            </configuration>
             <executions>
               <execution>
+                <id>integration-test</id>
                 <goals>
-                  <goal>clean</goal>
                   <goal>install</goal>
-                  <goal>test</goal>
+                  <goal>run</goal>
                 </goals>
               </execution>
             </executions>
