@@ -52,6 +52,11 @@
       <artifactId>proguard</artifactId>
       <version>4.3</version>
     </dependency>
+    <dependency>
+      <groupId>net.alchim31.3rd.org.7-zip</groupId>
+      <artifactId>lzma</artifactId>
+      <version>4.65</version>
+    </dependency>
 
     <dependency>
       <groupId>org.apache.velocity</groupId>
@@ -61,7 +66,7 @@
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-exec</artifactId>
-      <version>1.0</version>
+      <version>1.0.1</version>
     </dependency>
 
     <dependency>
@@ -161,19 +166,25 @@
         <plugins>
           <plugin>
             <artifactId>maven-invoker-plugin</artifactId>
-            <version>1.3</version>
+            <version>1.5</version>
             <configuration>
               <debug>false</debug>
               <streamLogs>true</streamLogs>
+              <showErrors>true</showErrors>
               <projectsDirectory>src/it</projectsDirectory>
+              <settingsFile>src/it/settings.xml</settingsFile>
               <pomIncludes>
-                <pomInclude>**/pom.xml</pomInclude>
+                <pomInclude>*/pom.xml</pomInclude>
               </pomIncludes>
               <pomExcludes>
                 <pomExclude>**/m*/pom.xml</pomExclude>
+                <pomExclude>**/target/**/pom.xml</pomExclude>
               </pomExcludes>
               <preBuildHookScript>setup.groovy</preBuildHookScript>
               <postBuildHookScript>validate.groovy</postBuildHookScript>
+              <properties>
+                <displayCmd>true</displayCmd>
+              </properties>
             </configuration>
             <executions>
               <execution>
