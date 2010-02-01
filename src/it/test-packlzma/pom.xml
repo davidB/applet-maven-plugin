@@ -1,0 +1,52 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>net.alchim31.maven.it</groupId>
+  <artifactId>test-1</artifactId>
+  <version>testing</version>
+  <name>${project.artifactId}</name>
+  <url>http://my.url/</url>
+  <organization>
+    <name>foo</name>
+  </organization>
+  <description>Test the myproject-maven-plugin:do-something goal.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-io</artifactId>
+      <version>1.3.2</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>net.alchim31.maven</groupId>
+        <artifactId>applet-maven-plugin</artifactId>
+        <version>@project.version@</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>jwsdir</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <compression>.pack.lzma</compression>
+          <verbose>false</verbose>
+          <packOptions>
+            <option>--modification-time=latest</option>
+            <option>--deflate-hint=false</option>
+            <option>--strip-debug</option>
+            <option>--effort=9</option>
+            <option>--segment-limit=-1</option>
+            <option>--no-keep-file-order</option>
+            <option>-J-Xmx1024m</option>
+          </packOptions>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

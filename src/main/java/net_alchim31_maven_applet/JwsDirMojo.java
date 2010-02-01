@@ -53,12 +53,14 @@ import org.codehaus.plexus.util.StringUtils;
 public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.logging.LogEnabled{
 
     private static String COMPRESSION_GZ = ".gz";
-    private static String COMPRESSION_PACKGZ = ".pack.gz";
+    private static String COMPRESSION_PACK = ".pack";
+    private static String COMPRESSION_LZMA = ".lzma";
 
     /**
      * Location of the file.
      * @parameter expression="${project.basedir}/src/main/jws"
      * @required
+     * @since 0.6
      */
     private File inputDirectory;
 
@@ -66,6 +68,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * Location of the file.
      * @parameter expression="${project.build.directory}/jws"
      * @required
+     * @since 0.6
      */
     private File outputDirectory;
 
@@ -73,6 +76,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * Template values, a set of properties available in the template processing
      *
      * @parameter
+     * @since 0.6
      */
     private Properties templateValues;
 
@@ -80,6 +84,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * Configuration of the signature to used.
      *
      * @parameter
+     * @since 0.6
      */
     private SignConfig sign;
 
@@ -93,24 +98,60 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      *
      * @see http://java.sun.com/javase/6/docs/technotes/guides/jweb/tools/pack200.html#pack200
      * @parameter expression="${applet.compression}" default-value=""
+     * @since 0.6
      */
     private String compression;
 
     /**
      * Should unpack and verify signature after packing ?
      * @parameter expression="${jnlp.pack.verify.signature}" default-value="false"
+     * @since 0.6
      */
     private boolean packVerifySignature;
 
     /**
-     * Optionnal additionnal options to use when calling pack200 (is compression set to .pack.gz)
+     * Optionnal additionnal options to use when calling pack200 (if compression set to .pack.(gz|lzma))
      * (eg: --modification-time=latest --deflate-hint=true --strip-debug).
+     * <pre>
+     *  -G, --strip-debug               remove debugging attributes while packing
+     *  -O, --no-keep-file-order        do not transmit file ordering information
+     *  --keep-file-order               (default) preserve input file ordering
+     *  -S{N}, --segment-limit={N}      output segment limit (default N=1Mb)
+     *  -E{N}, --effort={N}             packing effort (default N=5)
+     *  -H{h}, --deflate-hint={h}       transmit deflate hint: true, false, or keep (default)
+     *  -m{V}, --modification-time={V}  transmit modtimes: latest or keep (default)
+     *  -P{F}, --pass-file={F}          transmit the given input element(s) uncompressed
+     *  -U{a}, --unknown-attribute={a}  unknown attribute action: error, strip, or pass (default)
+     *  -C{N}={L}, --class-attribute={N}={L}  (user-defined attribute)
+     *  -F{N}={L}, --field-attribute={N}={L}  (user-defined attribute)
+     *  -M{N}={L}, --method-attribute={N}={L} (user-defined attribute)
+     *  -D{N}={L}, --code-attribute={N}={L}   (user-defined attribute)
+     *  -f{F}, --config-file={F}        read file F for Pack200.Packer properties
+     *  -v, --verbose                   increase program verbosity
+     *  -q, --quiet                     set verbosity to lowest level
+     *  -l{F}, --log-file={F}           output to the given log file, or '-' for System.out
+     * </pre>
      *
      * @see http://java.sun.com/j2se/1.5.0/docs/guide/deployment/deployment-guide/pack200.html#pack200_compression
      * @see http://java.sun.com/javase/6/docs/technotes/guides/jweb/tools/pack200.html#pack200
-     * @parameter expression="${jnlp.packOptions}"
+     * @since 0.6
      */
     private String[] packOptions;
+
+    /**
+     * Optionnal additionnal options to use when calling lzma (if compression set to (.pack)?.lzma)
+     * <pre>
+     *   -d{N}:  set dictionary - [0,28], default: 23 (8MB)
+     *   -fb{N}: set number of fast bytes - [5, 273], default: 128
+     *   -lc{N}: set number of literal context bits - [0, 8], default: 3
+     *   -lp{N}: set number of literal pos bits - [0, 4], default: 0
+     *   -pb{N}: set number of pos bits - [0, 4], default: 2
+     *   -mf{MF_ID}: set Match Finder: [bt2, bt4], default: bt4
+     *   -eos:   write End Of Stream marker
+     * </pre>
+     * @since 0.7
+     */
+    private String[] lzmaOptions;
 
     /**
      * Should generate a jar with version number that follow java-plugin convention ?
@@ -119,6 +160,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      *
      * @see http://java.sun.com/javase/6/docs/technotes/guides/jweb/tools/pack200.html#versionDownload
      * parameter expression="${jnlp.versionEnabled}" default-value="true"
+     * @since 0.6
      */
     private static boolean versionEnabled = false;     //TODO support versionEnable = false
 
@@ -126,6 +168,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * Size of the Thread Pool use to process jar (unsign, sign, packe,...) (default is nb of processor)
      *
      * @parameter expression="${jws.nbprocessor}"
+     * @since 0.6
      */
     private int nbProcessor = Runtime.getRuntime().availableProcessors();
 
@@ -133,6 +176,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
      * Enable verbose
      *
      * @parameter expression="${verbose}" default-value="true"
+     * @since 0.6
      */
     private boolean verbose=true;
 
@@ -223,11 +267,17 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             _ju = new JarUtil(new File(project.getBuild().getDirectory()), getLog());
             initJars(); //reset jarList before template fill it
             _depFinder = new DependencyFinderImpl0(project);
-            if (COMPRESSION_GZ.equals(compression) || COMPRESSION_PACKGZ.equals(compression)) {
+            if (COMPRESSION_GZ.equals(compression) || COMPRESSION_LZMA.equals(compression) || (COMPRESSION_PACK + COMPRESSION_GZ).equals(compression) || (COMPRESSION_PACK + COMPRESSION_LZMA).equals(compression)) {
                 getLog().info(" - - enable compression : "+ compression);
             } else {
                 if (StringUtils.isNotBlank(compression)) {
-                    getLog().warn(" - - disable compression '"+ compression + "' not supported, choose : '" + COMPRESSION_GZ + "', '"+ COMPRESSION_PACKGZ +"'");
+                    getLog().warn(" - - disable compression '"+ compression + "' not supported, choose : '"
+                            + COMPRESSION_GZ + "', '"
+                            + COMPRESSION_LZMA +"', '"
+                            + COMPRESSION_PACK +"', '"
+                            + COMPRESSION_PACK + COMPRESSION_GZ + "', '"
+                            + COMPRESSION_PACK + COMPRESSION_LZMA +"'"
+                    );
                 }
                 compression = null;
             }
@@ -316,7 +366,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         context.put("outputDir", this.outputDirectory);
         context.put("jws", this);
         context.put("project", project);
-        context.put("packEnabled", COMPRESSION_PACKGZ.equals(compression));
+        context.put("packEnabled", (compression != null) && compression.startsWith(COMPRESSION_PACK));
         context.put("versionEnabled", versionEnabled);
         return context;
     }
@@ -580,36 +630,41 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         if (compression != null) {
             // compress over an uncompressed jar for better compression
             logger.debug(" - - compress :" + dest);
-            File tmp3 = new File(outputDir, dest.getName()+"-tmp3.jar");
-            try {
-                _ju.rejar(exploded, tmp3, false, true);
-                if (packOptions != null && packOptions.length > 0) {
-                    logger.debug(" - - repack : " + tmp3);
-                    _ju.repack(tmp3, packOptions); //repack is used to strip some info in classes and jar
-                }
-                getLog().debug(" - - sign compressed : " + tmp3);
-                signer.sign(tmp3, tmp3);
-                File compressed = new File(dest.getCanonicalPath() + compression);
-                if (COMPRESSION_GZ.equals(compression)) {
-                    back.compressed = _ju.gzip(tmp3, compressed);
-                } else if (COMPRESSION_PACKGZ.equals(compression)) {
-                    File tmp3packed = _ju.pack(tmp3, packOptions, logger);
-                    tryDelete(tmp3);
-                    if (!tmp3packed.renameTo(compressed)) {
-                        throw new IllegalStateException("can't rename " + tmp3packed + " to "+ compressed);
-                    } else {
-                        if (packVerifySignature) {
-                            getLog().debug(" - - verify packed");
-                            _ju.unpack(compressed, tmp3);
-                            _ju.verifySignature(tmp3);
-                        }
-                        back.compressed = compressed;
-                    }
-                }
-            } finally {
-                tryDelete(tmp3);
-            }
+            File tmp3 = new File(outputDir, dest.getName().replace(".jar", "-tmp3.jar"));
 
+            _ju.rejar(exploded, tmp3, false, true);
+            if (packOptions != null && packOptions.length > 0) {
+                logger.debug(" - - repack : " + tmp3);
+                _ju.repack(tmp3, packOptions); //repack is used to strip some info in classes and jar (regardless of using pack or not later)
+            }
+            getLog().debug(" - - sign compressed : " + tmp3);
+            signer.sign(tmp3, tmp3);
+            if (compression.startsWith(COMPRESSION_PACK)) {
+                File tmp3packed = _ju.pack(tmp3, packOptions, logger);
+                tryDelete(tmp3);
+                if (packVerifySignature) {
+                    getLog().debug(" - - verify packed");
+                    _ju.unpack(tmp3packed, tmp3);
+                    _ju.verifySignature(tmp3);
+                    tryDelete(tmp3);
+                }
+                tmp3 = tmp3packed;
+            }
+            if (compression.endsWith(COMPRESSION_GZ)) {
+                File tmp3gzip = CompressionHelper.gzip(tmp3, new File(tmp3.getParentFile(), tmp3.getName()+ ".gz"));
+                tryDelete(tmp3);
+                tmp3 = tmp3gzip;
+            }
+            if (compression.endsWith(COMPRESSION_LZMA)) {
+                File tmp3lzma = CompressionHelper.lzma(tmp3, new File(tmp3.getParentFile(), tmp3.getName()+ ".lzma"), lzmaOptions);
+                tryDelete(tmp3);
+                tmp3 = tmp3lzma;
+            }
+            File compressed = new File(tmp3.getParentFile(), tmp3.getName().replace("-tmp3", ""));
+            if (!tmp3.renameTo(compressed)) {
+                throw new IllegalStateException("can't rename " + tmp3 + " to "+ compressed);
+            }
+            back.compressed = compressed;
         }
         logger.debug("end generation of " + dest);
         return back;

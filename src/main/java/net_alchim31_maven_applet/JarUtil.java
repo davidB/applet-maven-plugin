@@ -250,21 +250,6 @@ class JarUtil {
         exec(commandLine, false);
     }
 
-    public File gzip(File src, File dest) throws Exception {
-        InputStream istream = null;
-        OutputStream ostream = null;
-        try {
-            istream = new FileInputStream(src);
-            ostream = new GZIPOutputStream(new FileOutputStream(dest));
-            IOUtil.copy(istream, ostream);
-            ostream.flush();
-        } finally {
-            IOUtil.close(ostream);
-            IOUtil.close(istream);
-        }
-        return dest;
-    }
-
     public File pack(File jar, String[] options, final Log log) throws Exception {
 //        Packer packer = Pack200.newPacker();
 
@@ -288,7 +273,7 @@ class JarUtil {
 //    // pass one class file uncompressed:
 //    p.put(Packer.PASS_FILE_PFX+0, "mutants/Rogue.class");
         //TODO manage the case where options contains "-g, --no-gzip"
-        File back = new File(jar.getAbsolutePath() + ".pack.gz");
+        File back = new File(jar.getAbsolutePath() + ".pack");
 //        JarFile in = null;
 //        OutputStream out = null;
 //        try {
@@ -309,7 +294,7 @@ class JarUtil {
             log.info("big jar (" + jar.length() / 1024 + ") => modify segment-limit of pack");
             commandLine.addArguments(new String[]{"--segment-limit=-1"});
         }
-        commandLine.addArguments(new String[]{back.getAbsolutePath(), jar.getAbsolutePath()});
+        commandLine.addArguments(new String[]{"--no-gzip", back.getAbsolutePath(), jar.getAbsolutePath()});
         exec(commandLine);
         return back;
     }
