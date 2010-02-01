@@ -1,0 +1,63 @@
+<html>
+
+<head>
+  <title>Demo Applet</title>
+  <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js"></script>
+  <script type="text/javascript" src="http://java.com/js/deployJava.js"></script>
+</head>
+
+<body bgcolor="blue">
+<script language="javascript">
+
+function echoMessage(message) {
+  $("#feedback_message").text(message);
+}
+
+function getQueryString(){
+  var back = "";
+  var strHref = window.location.href;
+  if ( strHref.indexOf("?") > -1 ){
+    back = strHref.substr(strHref.indexOf("?")).toLowerCase();
+  }
+  return back;
+}
+</script>
+
+
+<div style="background:white; with:100%;">
+feedback_message : <span id="feedback_message">...</span><br/>
+</div>
+
+<script>
+  var attributes = {
+    name : "Hello",
+    width : "500",
+    height :"200",
+    code: "demo.HelloApplet",
+    archive: ''
+#set( $dependencies = $jws.findGenerated("all") )##
+#foreach( $dependency in ${dependencies} )##
+      + '${jws.addJar($dependency, false)},'
+#end##
+  };
+  var parameters = {
+      "java_version" : "1.6.0",
+      // java_arguments is an optimization to avoid a relaunch that will not be necessary in the future
+      "java_arguments" : "",
+      "separate_jvm" : "false",
+      "codebase_lookup" : "false",
+      "noddraw.check" : "true",
+      //"jnlp_href" : launch_url,
+      "draggable" : "false",
+      // Use an animated GIF as a loading indicator
+      //"image" : codebase + "loader.gif",
+      "boxborder" : "false",
+      "centerimage" : "true",
+      "boxbgcolor" : "#38547a",
+      "boxfgcolor" : "#ffffff"
+  }
+  deployJava.runApplet(cfg.attributes, parameters, "1.6.0");
+</script>
+
+</body>
+</html>

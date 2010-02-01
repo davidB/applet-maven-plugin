@@ -21,7 +21,7 @@ import org.apache.maven.mercury.transport.api.Server;
 
 // see http://www.sonatype.com/people/2008/10/mercury-externalized-dependencies/
 // see http://docs.codehaus.org/display/MAVEN/HowTo+use+Mercury+for+accessing+repositories
-public class MercurySample {
+public class IvySample {
     public static void main(String[] args) {
         try {
             File             _testBase;

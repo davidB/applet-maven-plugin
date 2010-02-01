@@ -3,6 +3,7 @@ package net_alchim31_maven_applet;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -264,68 +265,16 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             }
 
             getLog().info("step 0 : initialisation");
-            _ju = new JarUtil(new File(project.getBuild().getDirectory()), getLog());
-            initJars(); //reset jarList before template fill it
-            _depFinder = new DependencyFinderImpl0(project);
-            if (COMPRESSION_GZ.equals(compression) || COMPRESSION_LZMA.equals(compression) || (COMPRESSION_PACK + COMPRESSION_GZ).equals(compression) || (COMPRESSION_PACK + COMPRESSION_LZMA).equals(compression)) {
-                getLog().info(" - - enable compression : "+ compression);
-            } else {
-                if (StringUtils.isNotBlank(compression)) {
-                    getLog().warn(" - - disable compression '"+ compression + "' not supported, choose : '"
-                            + COMPRESSION_GZ + "', '"
-                            + COMPRESSION_LZMA +"', '"
-                            + COMPRESSION_PACK +"', '"
-                            + COMPRESSION_PACK + COMPRESSION_GZ + "', '"
-                            + COMPRESSION_PACK + COMPRESSION_LZMA +"'"
-                    );
-                }
-                compression = null;
-            }
+            initialisation();
 
             getLog().info("step 1 : register proguard out jar (if exists)");
-            for(File file : inputDirectory.listFiles()) {
-                if (file.getName().startsWith(".#") || file.getName().startsWith("#")) {
-                    continue;
-                }
-                String classifier = null;
-                if (file.getName().endsWith(".proguard.conf") && file.canRead()) {
-                    classifier = file.getName().substring(0, file.getName().length() - ".proguard.conf".length());
-                }
-                if (file.getName().endsWith(".proguard.conf.vm") && file.canRead()) {
-                    classifier = file.getName().substring(0, file.getName().length() - ".proguard.conf.vm".length());
-                }
-                if (classifier != null) {
-                    Artifact pArtifact = new DefaultArtifact(project.getGroupId(), project.getArtifactId(), VersionRange.createFromVersion(project.getVersion()), Artifact.SCOPE_RUNTIME, "jar", classifier, project.getArtifact().getArtifactHandler(), true);
-                    pArtifact.setFile(new File(outputDirectory, project.getArtifactId() + "-" + project.getVersion() + "-" + classifier + ".jar"));
-                    _generatedJars.add(pArtifact);
-                    getLog().debug(" - - register" + pArtifact);
-                }
-            }
+            registerProguardResults();
 
             getLog().info("step 2 : copy files and process templates");
-            VelocityContext context = initTemplateContext();
-            for(File file : inputDirectory.listFiles()) {
-                if (file.getName().endsWith(".vm") && file.canRead() && !file.getName().startsWith(".#") && !file.getName().startsWith("#")) {
-                    getLog().info(" - - process template : " + file.getName());
-                    // convert template to regular file in the outputdiretory and remove the '.vm' extension
-                    File out = new File(outputDirectory, file.getName().substring(0, file.getName().length() - 3));
-                    generateTemplate(context, file, out);
-                } else {
-                    // copy file
-                    FileUtils.copyFile(file, new File(outputDirectory, file.getName()));
-                }
-            }
+            processTemplates();
 
             getLog().info("step 3 : run proguard on *.proguard.conf");
-            for (Artifact a : findGenerated()) {
-                File confFile =  new File(outputDirectory, a.getClassifier() + ".proguard.conf");
-                if (confFile.canRead()) {
-                    getLog().info(" - - read configuration file " + confFile + " to generate " + a);
-                    ProguardHelper.run(confFile, a.getFile());
-                } else {
-                    getLog().warn(" - - can't read configuration file " + confFile + " to generate " + a);
-                }
-            }
+            generateProguardResutls();
 
             getLog().info("step 4 : generate .jar (and .pack.gz)");
             processJars(outputDirectory);
@@ -335,6 +284,75 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
 //            if (_ju != null && !getLog().isDebugEnabled()) {
 //                _ju.clean();
 //            }
+        }
+    }
+
+    private void generateProguardResutls() throws Exception {
+        for (Artifact a : findGenerated()) {
+            File confFile =  new File(outputDirectory, a.getClassifier() + ".proguard.conf");
+            if (confFile.canRead()) {
+                getLog().info(" - - read configuration file " + confFile + " to generate " + a);
+                ProguardHelper.run(confFile, a.getFile());
+            } else {
+                getLog().warn(" - - can't read configuration file " + confFile + " to generate " + a);
+            }
+        }
+    }
+
+    private void processTemplates() throws Exception, IOException {
+        VelocityContext context = initTemplateContext();
+        for(File file : inputDirectory.listFiles()) {
+            if (file.getName().endsWith(".vm") && file.canRead() && !file.getName().startsWith(".#") && !file.getName().startsWith("#")) {
+                getLog().info(" - - process template : " + file.getName());
+                // convert template to regular file in the outputdiretory and remove the '.vm' extension
+                File out = new File(outputDirectory, file.getName().substring(0, file.getName().length() - 3));
+                generateTemplate(context, file, out);
+            } else {
+                // copy file
+                FileUtils.copyFile(file, new File(outputDirectory, file.getName()));
+            }
+        }
+    }
+
+    private void registerProguardResults() {
+        getLog().info(" - - 11");
+        for(File file : inputDirectory.listFiles()) {
+            if (file.getName().startsWith(".#") || file.getName().startsWith("#")) {
+                continue;
+            }
+            String classifier = null;
+            if (file.getName().endsWith(".proguard.conf") && file.canRead()) {
+                classifier = file.getName().substring(0, file.getName().length() - ".proguard.conf".length());
+            }
+            if (file.getName().endsWith(".proguard.conf.vm") && file.canRead()) {
+                classifier = file.getName().substring(0, file.getName().length() - ".proguard.conf.vm".length());
+            }
+            if (classifier != null) {
+                Artifact pArtifact = new DefaultArtifact(project.getGroupId(), project.getArtifactId(), VersionRange.createFromVersion(project.getVersion()), Artifact.SCOPE_RUNTIME, "jar", classifier, project.getArtifact().getArtifactHandler(), true);
+                pArtifact.setFile(new File(outputDirectory, project.getArtifactId() + "-" + project.getVersion() + "-" + classifier + ".jar"));
+                _generatedJars.add(pArtifact);
+                getLog().info(" - - register" + pArtifact + " => " + pArtifact.getFile());
+            }
+        }
+    }
+
+    private void initialisation() throws Exception {
+        _ju = new JarUtil(new File(project.getBuild().getDirectory()), getLog());
+        initJars(); //reset jarList before template fill it
+        _depFinder = new DependencyFinderImpl0(project);
+        if (COMPRESSION_GZ.equals(compression) || COMPRESSION_LZMA.equals(compression) || (COMPRESSION_PACK + COMPRESSION_GZ).equals(compression) || (COMPRESSION_PACK + COMPRESSION_LZMA).equals(compression)) {
+            getLog().info(" - - enable compression : "+ compression);
+        } else {
+            if (StringUtils.isNotBlank(compression)) {
+                getLog().warn(" - - disable compression '"+ compression + "' not supported, choose : '"
+                        + COMPRESSION_GZ + "', '"
+                        + COMPRESSION_LZMA +"', '"
+                        + COMPRESSION_PACK +"', '"
+                        + COMPRESSION_PACK + COMPRESSION_GZ + "', '"
+                        + COMPRESSION_PACK + COMPRESSION_LZMA +"'"
+                );
+            }
+            compression = null;
         }
     }
 

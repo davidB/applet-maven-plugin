@@ -48,9 +48,9 @@
       <version>1.1</version>
     </dependency>
     <dependency>
-      <groupId>net.sf.proguard</groupId>
+      <groupId>net.alchim31.3rd.net.sf.proguard</groupId>
       <artifactId>proguard</artifactId>
-      <version>4.3</version>
+      <version>4.4</version>
     </dependency>
     <dependency>
       <groupId>net.alchim31.3rd.org.7-zip</groupId>
@@ -122,6 +122,13 @@
       <groupId>org.apache.maven.mercury</groupId>
       <artifactId>mercury-plexus</artifactId>
       <version>${mercury.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>net.alchim31.3rd.org.apache.ivy</groupId>
+      <artifactId>ivy</artifactId>
+      <version>2.1.0</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
