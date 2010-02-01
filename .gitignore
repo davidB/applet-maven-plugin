@@ -20,3 +20,8 @@ bin
 #maven
 pom.xml.releaseBackup
 release.properties
+/src/it/test-proguard/build.log
+/src/it/test-packlzma/build.log
+/src/it/test-packgz/build.log
+/src/it/test-2/build.log
+/src/it/test-1/build.log
