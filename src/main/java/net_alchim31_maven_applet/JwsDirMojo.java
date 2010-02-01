@@ -598,11 +598,11 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
                 totalSizeCompressed += result.compressed.length();
             }
         }
-        getLog().info(" - - total size of .jar         : " + totalSizeJar / 1024 + " KB");
+        getLog().info(" - - total size of .jar           : " + totalSizeJar / 1024 + " KB");
         if ((totalSizeJar > 0) &&  (totalSizeCompressed > 0)) {
             getLog().info(" - - total size of .jar" + compression +" : " + totalSizeCompressed / 1024 + " KB ~ " + (totalSizeCompressed * 100/totalSizeJar) + "%");
         }
-        getLog().info(" - - total number of jar        : " +  nbFile);
+        getLog().info(" - - total number of jar          : " +  nbFile);
     }
 
     public static class ProcessJarResult {
@@ -628,46 +628,51 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         //signer.verify(out);
 
         if (compression != null) {
-            // compress over an uncompressed jar for better compression
-            logger.debug(" - - compress :" + dest);
-            File tmp3 = new File(outputDir, dest.getName().replace(".jar", "-tmp3.jar"));
-
-            _ju.rejar(exploded, tmp3, false, true);
-            if (packOptions != null && packOptions.length > 0) {
-                logger.debug(" - - repack : " + tmp3);
-                _ju.repack(tmp3, packOptions); //repack is used to strip some info in classes and jar (regardless of using pack or not later)
-            }
-            getLog().debug(" - - sign compressed : " + tmp3);
-            signer.sign(tmp3, tmp3);
-            if (compression.startsWith(COMPRESSION_PACK)) {
-                File tmp3packed = _ju.pack(tmp3, packOptions, logger);
-                tryDelete(tmp3);
-                if (packVerifySignature) {
-                    getLog().debug(" - - verify packed");
-                    _ju.unpack(tmp3packed, tmp3);
-                    _ju.verifySignature(tmp3);
-                    tryDelete(tmp3);
-                }
-                tmp3 = tmp3packed;
-            }
-            if (compression.endsWith(COMPRESSION_GZ)) {
-                File tmp3gzip = CompressionHelper.gzip(tmp3, new File(tmp3.getParentFile(), tmp3.getName()+ ".gz"));
-                tryDelete(tmp3);
-                tmp3 = tmp3gzip;
-            }
-            if (compression.endsWith(COMPRESSION_LZMA)) {
-                File tmp3lzma = CompressionHelper.lzma(tmp3, new File(tmp3.getParentFile(), tmp3.getName()+ ".lzma"), lzmaOptions);
-                tryDelete(tmp3);
-                tmp3 = tmp3lzma;
-            }
-            File compressed = new File(tmp3.getParentFile(), tmp3.getName().replace("-tmp3", ""));
-            if (!tmp3.renameTo(compressed)) {
-                throw new IllegalStateException("can't rename " + tmp3 + " to "+ compressed);
-            }
-            back.compressed = compressed;
+            back.compressed = compress(logger, signer, exploded, dest);
         }
+
         logger.debug("end generation of " + dest);
         return back;
+    }
+
+    private File compress(Log logger, JarSigner signer, File exploded, File dest) throws Exception {
+        // compress over an uncompressed jar for better compression
+        logger.debug(" - - compress :" + dest);
+        File tmp3 = new File(dest.getParentFile(), dest.getName().replace(".jar", "-tmp3.jar"));
+
+        _ju.rejar(exploded, tmp3, false, true);
+        if (packOptions != null && packOptions.length > 0) {
+            logger.debug(" - - repack : " + tmp3);
+            _ju.repack(tmp3, packOptions); //repack is used to strip some info in classes and jar (regardless of using pack or not later)
+        }
+        getLog().debug(" - - sign compressed : " + tmp3);
+        signer.sign(tmp3, tmp3);
+        if (compression.startsWith(COMPRESSION_PACK)) {
+            File tmp3packed = _ju.pack(tmp3, packOptions, logger);
+            tryDelete(tmp3);
+            if (packVerifySignature) {
+                getLog().debug(" - - verify packed");
+                _ju.unpack(tmp3packed, tmp3);
+                _ju.verifySignature(tmp3);
+                tryDelete(tmp3);
+            }
+            tmp3 = tmp3packed;
+        }
+        if (compression.endsWith(COMPRESSION_GZ)) {
+            File tmp3gzip = CompressionHelper.gzip(tmp3, new File(tmp3.getParentFile(), tmp3.getName()+ ".gz"));
+            tryDelete(tmp3);
+            tmp3 = tmp3gzip;
+        }
+        if (compression.endsWith(COMPRESSION_LZMA)) {
+            File tmp3lzma = CompressionHelper.lzma(tmp3, new File(tmp3.getParentFile(), tmp3.getName()+ ".lzma"), lzmaOptions);
+            tryDelete(tmp3);
+            tmp3 = tmp3lzma;
+        }
+        File compressed = new File(tmp3.getParentFile(), tmp3.getName().replace("-tmp3", ""));
+        if (!tmp3.renameTo(compressed)) {
+            throw new IllegalStateException("can't rename " + tmp3 + " to "+ compressed);
+        }
+        return compressed;
     }
 
     private void tryDelete(File f) {
