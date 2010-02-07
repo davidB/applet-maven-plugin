@@ -43,6 +43,7 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
 import org.codehaus.plexus.util.StringUtils;
+import org.jmock.expectation.ReturnValues;
 
 /**
  * generate jnlp (from template), rename, sign, pack jar
@@ -290,11 +291,13 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
     private void generateProguardResutls() throws Exception {
         for (Artifact a : findGenerated()) {
             File confFile =  new File(outputDirectory, a.getClassifier() + ".proguard.conf");
-            if (confFile.canRead()) {
-                getLog().info(" - - read configuration file " + confFile + " to generate " + a);
-                ProguardHelper.run(confFile, a.getFile());
-            } else {
-                getLog().warn(" - - can't read configuration file " + confFile + " to generate " + a);
+            if (isSourceUpdated(a.getFile(), confFile)) {
+                if (confFile.canRead()) {
+                    getLog().info(" - - read configuration file " + confFile + " to generate " + a);
+                    ProguardHelper.run(confFile, a.getFile());
+                } else {
+                    getLog().warn(" - - can't read configuration file " + confFile + " to generate " + a);
+                }
             }
         }
     }
@@ -306,7 +309,9 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
                 getLog().info(" - - process template : " + file.getName());
                 // convert template to regular file in the outputdiretory and remove the '.vm' extension
                 File out = new File(outputDirectory, file.getName().substring(0, file.getName().length() - 3));
-                generateTemplate(context, file, out);
+                if (isSourceUpdated(out, file)) {
+                    generateTemplate(context, file, out);
+                }
             } else {
                 // copy file
                 FileUtils.copyFile(file, new File(outputDirectory, file.getName()));
@@ -633,32 +638,44 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         File in = artifact.getFile();
         File dest = new File(outputDir, findFilename(artifact, true));
 
-        logger.debug(" - - unsign :" + in + " to " + dest);
-        File exploded = _ju.rejar(in, dest, true, true);
+        // sign and compression is a long task we try to avoid redo it if useless (between several run)
+        if (isSourceUpdated(dest, in)) {
+            logger.debug(" - - unsign :" + in + " to " + dest);
+            File exploded = _ju.rejar(in, dest, true, true);
 
-//        getLog().debug(" - - create INDEX.LIST");
-//        _ju.createIndex(dest, getLog());
+    //        getLog().debug(" - - create INDEX.LIST");
+    //        _ju.createIndex(dest, getLog());
 
-        getLog().debug(" - - sign  : " + dest);
-        signer.sign(dest, dest);
-        back.jar = dest;
+            getLog().debug(" - - sign  : " + dest);
+            signer.sign(dest, dest);
+            back.jar = dest;
 
-        //signer.verify(out);
+            //signer.verify(out);
 
-        if (compression != null) {
-            back.compressed = compress(logger, signer, exploded, dest);
+            if (compression != null) {
+                back.compressed = compress(logger, signer, exploded, dest);
+            }
+
+        } else {
+            back.jar = dest;
+            if (compression != null) {
+                File compressed = new File(dest.getAbsolutePath() + compression);
+                if (!compressed.exists()) {
+                    compressed = compress(logger, signer, in, dest);
+                }
+                back.compressed = compressed;
+            }
         }
-
         logger.debug("end generation of " + dest);
         return back;
     }
 
-    private File compress(Log logger, JarSigner signer, File exploded, File dest) throws Exception {
+    private File compress(Log logger, JarSigner signer, File explodedOrJar, File dest) throws Exception {
         // compress over an uncompressed jar for better compression
         logger.debug(" - - compress :" + dest);
         File tmp3 = new File(dest.getParentFile(), dest.getName().replace(".jar", "-tmp3.jar"));
 
-        _ju.rejar(exploded, tmp3, false, true);
+        _ju.rejar(explodedOrJar, tmp3, false, true);
         if (packOptions != null && packOptions.length > 0) {
             logger.debug(" - - repack : " + tmp3);
             _ju.repack(tmp3, packOptions); //repack is used to strip some info in classes and jar (regardless of using pack or not later)
@@ -687,6 +704,7 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
             tmp3 = tmp3lzma;
         }
         File compressed = new File(tmp3.getParentFile(), tmp3.getName().replace("-tmp3", ""));
+        tryDelete(compressed); //Windows failed to rename to an existing file
         if (!tmp3.renameTo(compressed)) {
             throw new IllegalStateException("can't rename " + tmp3 + " to "+ compressed);
         }
@@ -701,5 +719,24 @@ public class JwsDirMojo extends AbstractMojo { //implements org.codehaus.plexus.
         } catch (Exception exc) {
             getLog().warn("failed to delete :" + f);
         }
+    }
+
+    private File _pom = null;
+    private File getPom() {
+        if (_pom == null) {
+            _pom = new File(project.getBasedir(), "pom.xml");
+        }
+        return _pom;
+    }
+
+    private boolean isSourceUpdated(File dest, File... sources) throws Exception {
+        boolean back = !dest.exists();
+        back = back || dest.lastModified() < getPom().lastModified();
+        for(File source : sources) {
+            if (source.exists()) {
+                back = back || dest.lastModified() < source.lastModified();
+            }
+        }
+        return back;
     }
 }
