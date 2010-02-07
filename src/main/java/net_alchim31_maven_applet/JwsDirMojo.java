@@ -43,7 +43,6 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
 import org.codehaus.plexus.util.StringUtils;
-import org.jmock.expectation.ReturnValues;
 
 /**
  * generate jnlp (from template), rename, sign, pack jar
